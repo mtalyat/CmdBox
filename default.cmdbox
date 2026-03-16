@@ -6,7 +6,7 @@
       "show_name": true,
       "command": "echo \"Hello from CmdBox\"",
       "icon_value": "Console",
-      "shortcut": ""
+      "shortcut": "CTRL+H"
     },
     {
       "id": "ffe7f34f",
@@ -14,7 +14,7 @@
       "show_name": true,
       "command": "echo Hello there, {Name}!",
       "icon_value": "Magic Wand",
-      "shortcut": ""
+      "shortcut": "CTRL+N"
     }
   ],
   "filters": [

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import ctypes
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -595,7 +596,25 @@ class MainFrame(wx.Frame):
         if not placeholders:
             return command
 
-        dlg = CommandArgumentsDialog(self, placeholders)
+        minimized = self.IsIconized()
+        dlg_parent: wx.Window | None = None if minimized else self
+        dlg = CommandArgumentsDialog(dlg_parent, placeholders)
+        if minimized:
+            # Keep the main frame minimized, but force the prompt visible.
+            dlg.SetWindowStyleFlag(dlg.GetWindowStyleFlag() | wx.STAY_ON_TOP)
+            dlg.CentreOnScreen()
+            try:
+                hwnd = int(dlg.GetHandle())
+                if hwnd:
+                    user32 = ctypes.windll.user32
+                    SW_SHOW = 5
+                    user32.ShowWindow(hwnd, SW_SHOW)
+                    user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+            dlg.Raise()
+        else:
+            dlg.CentreOnParent()
         try:
             if dlg.ShowModal() != wx.ID_OK:
                 return None
