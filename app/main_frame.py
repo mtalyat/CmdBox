@@ -222,13 +222,19 @@ class MainFrame(wx.Frame):
             return
 
     def _refresh_tray_icon(self) -> None:
+        tooltip = self._tray_tooltip_text()
         icon_path = self._resolve_app_icon_path()
         if icon_path:
             icon = wx.Icon(str(icon_path), wx.BITMAP_TYPE_ANY)
             if icon.IsOk():
-                self._tray_icon.SetIcon(icon, "CmdBox")
+                self._tray_icon.SetIcon(icon, tooltip)
                 return
-        self._tray_icon.SetIcon(wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16)), "CmdBox")
+        self._tray_icon.SetIcon(wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16)), tooltip)
+
+    def _tray_tooltip_text(self) -> str:
+        if self._project_path:
+            return f"CmdBox - {self._project_path.name}"
+        return "CmdBox"
 
     def _show_window(self) -> None:
         if self.IsIconized():
@@ -520,6 +526,7 @@ class MainFrame(wx.Frame):
     def _update_title(self) -> None:
         dirty = "*" if self._dirty else ""
         self.SetTitle(f"CmdBox - {self._project_label()}{dirty}")
+        self._refresh_tray_icon()
 
     def _mark_dirty(self, dirty: bool = True) -> None:
         self._dirty = dirty
