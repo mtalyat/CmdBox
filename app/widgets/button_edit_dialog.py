@@ -5,13 +5,14 @@ from pathlib import Path
 import wx
 
 from app.models.config_models import CommandButtonConfig
+from app.services.runtime_paths import icons_dir
 
 
 ICON_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".ico", ".gif")
 
 
 def _icons_dir() -> Path:
-    return Path.cwd() / "icons"
+    return icons_dir()
 
 
 def _discover_icons() -> list[tuple[str, Path]]:

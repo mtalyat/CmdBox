@@ -84,16 +84,10 @@ class AppConfig:
         ]
 
         if not buttons:
-            buttons = [
-                CommandButtonConfig(
-                    label="Echo Hello",
-                    command='echo "Hello from CmdBox"',
-                    icon_value="ART_TIP",
-                )
-            ]
+            buttons = []
 
         if not filters:
-            filters = [FilterConfig(name="ERR", pattern="ERR", enabled=False)]
+            filters = []
 
         sash_position = int(data.get("sash_position") or 420)
         return AppConfig(buttons=buttons, filters=filters, sash_position=sash_position)

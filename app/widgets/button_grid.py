@@ -7,6 +7,7 @@ from typing import Callable
 import wx
 
 from app.models.config_models import CommandButtonConfig
+from app.services.runtime_paths import icons_dir
 from app.widgets.button_edit_dialog import ButtonEditDialog
 
 
@@ -162,17 +163,17 @@ class ButtonGridPanel(wx.Panel):
             if img.IsOk():
                 return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
 
-        icons_dir = Path.cwd() / "icons"
-        if not p.is_absolute() and icons_dir.exists() and icons_dir.is_dir():
+        icon_root = icons_dir()
+        if not p.is_absolute() and icon_root.exists() and icon_root.is_dir():
             if p.suffix:
-                candidate = icons_dir / p.name
+                candidate = icon_root / p.name
                 if candidate.exists() and candidate.is_file():
                     img = wx.Image(str(candidate))
                     if img.IsOk():
                         return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
             else:
                 for ext in ICON_EXTENSIONS:
-                    candidate = icons_dir / f"{icon_value}{ext}"
+                    candidate = icon_root / f"{icon_value}{ext}"
                     if candidate.exists() and candidate.is_file():
                         img = wx.Image(str(candidate))
                         if img.IsOk():

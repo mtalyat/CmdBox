@@ -14,6 +14,7 @@ from app.models.config_models import AppConfig, CommandButtonConfig, FilterConfi
 from app.services.command_runner import CommandRunner
 from app.services.log_service import LogEntry, LogService
 from app.services.overlay_queue import OverlayQueue
+from app.services.runtime_paths import app_root, default_project_file, icon_file, icons_dir, user_data_dir
 from app.storage.app_settings_store import AppSettingsStore
 from app.storage.config_store import ConfigStore
 from app.widgets.button_grid import ButtonGridPanel
@@ -44,7 +45,7 @@ class MainFrame(wx.Frame):
         self._apply_app_icon()
 
         startup_project = self._resolve_startup_project_path(project_path)
-        store_path = startup_project or (Path.cwd() / f"default{PROJECT_EXT}")
+        store_path = startup_project or default_project_file()
         self._store = ConfigStore(store_path)
         self._config = self._store.load_from(startup_project) if startup_project else AppConfig.from_dict({})
         self._project_path: Optional[Path] = startup_project
@@ -86,17 +87,17 @@ class MainFrame(wx.Frame):
             if img.IsOk():
                 return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
 
-        icons_dir = Path.cwd() / "icons"
-        if not p.is_absolute() and icons_dir.exists() and icons_dir.is_dir():
+        icon_root = icons_dir()
+        if not p.is_absolute() and icon_root.exists() and icon_root.is_dir():
             if p.suffix:
-                candidate = icons_dir / p.name
+                candidate = icon_root / p.name
                 if candidate.exists() and candidate.is_file():
                     img = wx.Image(str(candidate))
                     if img.IsOk():
                         return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
             else:
                 for ext in ICON_EXTENSIONS:
-                    candidate = icons_dir / f"{icon_value}{ext}"
+                    candidate = icon_root / f"{icon_value}{ext}"
                     if candidate.exists() and candidate.is_file():
                         img = wx.Image(str(candidate))
                         if img.IsOk():
@@ -150,10 +151,7 @@ class MainFrame(wx.Frame):
         self._sync_overlay_queue()
 
     def _resolve_app_icon_path(self) -> Optional[Path]:
-        candidates = [
-            Path.cwd() / "Icon.png",
-            Path(__file__).resolve().parents[1] / "Icon.png",
-        ]
+        candidates = [icon_file()]
         for candidate in candidates:
             if candidate.exists() and candidate.is_file():
                 return candidate
@@ -185,7 +183,7 @@ class MainFrame(wx.Frame):
             return
 
     def _recent_pointer_path(self) -> Path:
-        return Path.cwd() / RECENT_PROJECT_FILE
+        return user_data_dir() / RECENT_PROJECT_FILE
 
     def _merge_recent_project(self, project_path: Path, items: list[Path]) -> list[Path]:
         resolved = project_path.resolve()
@@ -223,7 +221,7 @@ class MainFrame(wx.Frame):
             for value in values:
                 candidate = Path(value)
                 if not candidate.is_absolute():
-                    candidate = (Path.cwd() / candidate).resolve()
+                    candidate = (app_root() / candidate).resolve()
                 if candidate.exists() and candidate.is_file() and candidate not in out:
                     out.append(candidate)
                 if len(out) >= RECENT_PROJECT_LIMIT:
@@ -492,8 +490,7 @@ class MainFrame(wx.Frame):
         return True
 
     def _new_default_config(self) -> AppConfig:
-        repo_root = Path(__file__).resolve().parents[1]
-        default_path = repo_root / "default.cmdbox"
+        default_path = default_project_file()
         if default_path.exists() and default_path.is_file():
             try:
                 import json as _json
@@ -580,7 +577,7 @@ class MainFrame(wx.Frame):
     def _command_working_dir(self) -> Path:
         if self._project_path and self._project_path.exists():
             return self._project_path.parent
-        return Path.cwd()
+        return app_root()
 
     def _command_placeholders(self, command: str) -> list[str]:
         seen: set[str] = set()

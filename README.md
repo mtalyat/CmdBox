@@ -43,12 +43,18 @@ python main.py
 python main.py .\my-project.cmdbox
 ```
 
-- If you register a Windows file association for `.cmdbox` to run `cmdbox.bat`, double-clicking a project file can open it directly.
+- If you register a Windows file association for `.cmdbox`, double-clicking a project file can open it directly.
 
 To register the association for your current user on Windows:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\register-file-association.ps1
+```bat
+scripts\register-file-association.bat
+```
+
+To build the Windows executable bundle:
+
+```bat
+scripts\build.bat
 ```
 
 ## Notes

@@ -1,3 +1,0 @@
-@echo off
-start "" pythonw "%~dp0main.py" %*
-exit /b

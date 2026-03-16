@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 cmdbox_config.json
 .cmdbox_recent
+build/
+dist/

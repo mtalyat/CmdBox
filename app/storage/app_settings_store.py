@@ -4,11 +4,12 @@ import json
 from pathlib import Path
 
 from app.models.app_settings_models import AppSettings
+from app.services.runtime_paths import user_data_dir
 
 
 class AppSettingsStore:
     def __init__(self, settings_path: Path | None = None):
-        self._settings_path = settings_path or (Path.home() / ".cmdbox_settings.json")
+        self._settings_path = settings_path or (user_data_dir() / "settings.json")
         self._settings_path.parent.mkdir(parents=True, exist_ok=True)
 
     def load(self) -> AppSettings:
