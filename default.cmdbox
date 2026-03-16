@@ -1,0 +1,39 @@
+{
+  "buttons": [
+    {
+      "id": "d5487f10",
+      "label": "Echo Hello",
+      "show_name": true,
+      "command": "echo \"Hello from CmdBox\"",
+      "icon_value": "Console",
+      "shortcut": ""
+    },
+    {
+      "id": "ffe7f34f",
+      "label": "Your Name",
+      "show_name": true,
+      "command": "echo Hello there, {Name}!",
+      "icon_value": "Magic Wand",
+      "shortcut": ""
+    }
+  ],
+  "filters": [
+    {
+      "id": "315123f8",
+      "name": "ERR",
+      "pattern": "ERR",
+      "enabled": false,
+      "case_sensitive": false,
+      "use_regex": false
+    },
+    {
+      "id": "2c80f11a",
+      "name": "WRN",
+      "pattern": "WRN",
+      "enabled": false,
+      "case_sensitive": false,
+      "use_regex": false
+    }
+  ],
+  "sash_position": 420
+}

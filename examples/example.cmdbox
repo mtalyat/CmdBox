@@ -1,0 +1,29 @@
+{
+  "buttons": [
+    {
+      "id": "9cccc2f7",
+      "label": "Echo Hello",
+      "show_name": true,
+      "command": "echo \"Hello from CmdBox\"",
+      "icon_value": "Smiley",
+      "shortcut": "CTRL+ALT+E"
+    },
+    {
+      "id": "af9926ca",
+      "label": "Test",
+      "show_name": true,
+      "command": "echo test",
+      "icon_value": "Rocket",
+      "shortcut": ""
+    }
+  ],
+  "filters": [
+    {
+      "id": "3973445c",
+      "name": "ERR",
+      "pattern": "ERR",
+      "enabled": false
+    }
+  ],
+  "sash_position": 420
+}
