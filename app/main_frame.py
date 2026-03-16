@@ -9,6 +9,7 @@ from typing import Optional
 from uuid import uuid4
 
 import wx
+import wx.adv
 
 from app.models.app_settings_models import AppSettings
 from app.models.config_models import AppConfig, CommandButtonConfig, FilterConfig
@@ -40,6 +41,40 @@ ICON_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".ico", ".gif")
 COMMAND_ARG_RE = re.compile(r"\{([^{}]+)\}")
 
 
+class CmdBoxTaskBarIcon(wx.adv.TaskBarIcon):
+    def __init__(self, frame: "MainFrame"):
+        super().__init__()
+        self._frame = frame
+        self._show_hide_id = wx.NewIdRef()
+        self._exit_id = wx.NewIdRef()
+        self.Bind(wx.adv.EVT_TASKBAR_LEFT_UP, self._on_left_click)
+        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DCLICK, self._on_left_double_click)
+        self.Bind(wx.EVT_MENU, self._on_show_hide, id=self._show_hide_id)
+        self.Bind(wx.EVT_MENU, self._on_exit, id=self._exit_id)
+
+    def CreatePopupMenu(self) -> wx.Menu:
+        menu = wx.Menu()
+        if self._frame.IsShown():
+            menu.Append(self._show_hide_id, "Hide")
+        else:
+            menu.Append(self._show_hide_id, "Show")
+        menu.AppendSeparator()
+        menu.Append(self._exit_id, "Exit")
+        return menu
+
+    def _on_left_click(self, _evt: wx.adv.TaskBarIconEvent) -> None:
+        self._frame._toggle_window_visibility()
+
+    def _on_left_double_click(self, _evt: wx.adv.TaskBarIconEvent) -> None:
+        self._frame._toggle_window_visibility()
+
+    def _on_show_hide(self, _evt: wx.CommandEvent) -> None:
+        self._frame._toggle_window_visibility()
+
+    def _on_exit(self, _evt: wx.CommandEvent) -> None:
+        self._frame._request_exit()
+
+
 class MainFrame(wx.Frame):
     def __init__(self, project_path: Optional[Path] = None):
         super().__init__(None, title="CmdBox", size=(1100, 700))
@@ -67,12 +102,15 @@ class MainFrame(wx.Frame):
         self._overlay_instance_id = uuid4().hex
         self._overlay_queue = OverlayQueue()
         self._overlay_queue_timer = wx.Timer(self)
+        self._is_exiting = False
+        self._tray_icon = CmdBoxTaskBarIcon(self)
 
         self._create_menu()
         self._build_ui()
         self._bind_events()
         self._update_title()
         self._refresh_hotkeys()
+        self._refresh_tray_icon()
         self._overlay_queue_timer.Start(350)
 
         self.Centre()
@@ -182,6 +220,36 @@ class MainFrame(wx.Frame):
         except Exception:
             # Missing/invalid icon must never block app startup.
             return
+
+    def _refresh_tray_icon(self) -> None:
+        icon_path = self._resolve_app_icon_path()
+        if icon_path:
+            icon = wx.Icon(str(icon_path), wx.BITMAP_TYPE_ANY)
+            if icon.IsOk():
+                self._tray_icon.SetIcon(icon, "CmdBox")
+                return
+        self._tray_icon.SetIcon(wx.ArtProvider.GetIcon(wx.ART_INFORMATION, wx.ART_OTHER, (16, 16)), "CmdBox")
+
+    def _show_window(self) -> None:
+        if self.IsIconized():
+            self.Iconize(False)
+        if not self.IsShown():
+            self.Show(True)
+        self.Raise()
+
+    def _hide_window_to_tray(self) -> None:
+        if self.IsShown():
+            self.Hide()
+
+    def _toggle_window_visibility(self) -> None:
+        if self.IsShown():
+            self._hide_window_to_tray()
+            return
+        self._show_window()
+
+    def _request_exit(self) -> None:
+        self._is_exiting = True
+        self.Close()
 
     def _recent_pointer_path(self) -> Path:
         return user_data_dir() / RECENT_PROJECT_FILE
@@ -329,6 +397,7 @@ class MainFrame(wx.Frame):
 
     def _bind_events(self) -> None:
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        self.Bind(wx.EVT_ICONIZE, self._on_iconize)
         self.Bind(wx.EVT_MENU, self._on_new_project, self._new_item)
         self.Bind(wx.EVT_MENU, self._on_open_project, self._open_item)
         self.Bind(wx.EVT_MENU, self._on_save_project, self._save_item)
@@ -596,10 +665,10 @@ class MainFrame(wx.Frame):
         if not placeholders:
             return command
 
-        minimized = self.IsIconized()
-        dlg_parent: wx.Window | None = None if minimized else self
+        use_top_level_dialog = self.IsIconized() or (not self.IsShown())
+        dlg_parent: wx.Window | None = None if use_top_level_dialog else self
         dlg = CommandArgumentsDialog(dlg_parent, placeholders)
-        if minimized:
+        if use_top_level_dialog:
             # Keep the main frame minimized, but force the prompt visible.
             dlg.SetWindowStyleFlag(dlg.GetWindowStyleFlag() | wx.STAY_ON_TOP)
             dlg.CentreOnScreen()
@@ -739,6 +808,7 @@ class MainFrame(wx.Frame):
         self._save_as_project_with_dialog()
 
     def _on_open_settings(self, _evt: wx.CommandEvent) -> None:
+        self._show_window()
         dlg = SettingsDialog(self, self._app_settings)
         if dlg.ShowModal() == wx.ID_OK:
             updated = dlg.get_value()
@@ -752,7 +822,12 @@ class MainFrame(wx.Frame):
         dlg.Destroy()
 
     def _on_exit(self, _evt: wx.CommandEvent) -> None:
-        self.Close()
+        self._request_exit()
+
+    def _on_iconize(self, evt: wx.IconizeEvent) -> None:
+        if evt.IsIconized() and not self._is_exiting:
+            wx.CallAfter(self._hide_window_to_tray)
+        evt.Skip()
 
     def _on_add_button_menu(self, _evt: wx.CommandEvent) -> None:
         self.button_grid.add_button()
@@ -761,6 +836,10 @@ class MainFrame(wx.Frame):
         self.log_panel.add_filter()
 
     def _on_close(self, evt: wx.CloseEvent) -> None:
+        if not self._is_exiting and evt.CanVeto():
+            self._hide_window_to_tray()
+            evt.Veto()
+            return
         if not self._can_discard_changes():
             evt.Veto()
             return
@@ -773,6 +852,11 @@ class MainFrame(wx.Frame):
             pass
         try:
             self._overlay_queue.unregister(self._overlay_instance_id)
+        except Exception:
+            pass
+        try:
+            self._tray_icon.RemoveIcon()
+            self._tray_icon.Destroy()
         except Exception:
             pass
         self._run_overlay.hide_overlay()
