@@ -651,6 +651,10 @@ class MainFrame(wx.Frame):
         self._log_service.add(entry)
         self.log_panel.append_entry(entry)
 
+    def _show_command_failed_dialog(self, source: str, return_code: int) -> None:
+        msg = f"{source} failed (exit code {return_code})."
+        wx.MessageBox(msg, "Command Failed", wx.OK | wx.ICON_ERROR | wx.STAY_ON_TOP)
+
     def _command_working_dir(self) -> Path:
         if self._project_path and self._project_path.exists():
             return self._project_path.parent
@@ -672,25 +676,20 @@ class MainFrame(wx.Frame):
         if not placeholders:
             return command
 
-        use_top_level_dialog = self.IsIconized() or (not self.IsShown())
-        dlg_parent: wx.Window | None = None if use_top_level_dialog else self
-        dlg = CommandArgumentsDialog(dlg_parent, placeholders)
-        if use_top_level_dialog:
-            # Keep the main frame minimized, but force the prompt visible.
-            dlg.SetWindowStyleFlag(dlg.GetWindowStyleFlag() | wx.STAY_ON_TOP)
-            dlg.CentreOnScreen()
-            try:
-                hwnd = int(dlg.GetHandle())
-                if hwnd:
-                    user32 = ctypes.windll.user32
-                    SW_SHOW = 5
-                    user32.ShowWindow(hwnd, SW_SHOW)
-                    user32.SetForegroundWindow(hwnd)
-            except Exception:
-                pass
-            dlg.Raise()
-        else:
-            dlg.CentreOnParent()
+        dlg = CommandArgumentsDialog(None, placeholders)
+        # Always show the argument prompt above other windows.
+        dlg.SetWindowStyleFlag(dlg.GetWindowStyleFlag() | wx.STAY_ON_TOP)
+        dlg.CentreOnScreen()
+        try:
+            hwnd = int(dlg.GetHandle())
+            if hwnd:
+                user32 = ctypes.windll.user32
+                SW_SHOW = 5
+                user32.ShowWindow(hwnd, SW_SHOW)
+                user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        dlg.Raise()
         try:
             if dlg.ShowModal() != wx.ID_OK:
                 return None
@@ -725,6 +724,8 @@ class MainFrame(wx.Frame):
                 run_id,
                 f"Process exited with code {return_code}.",
             )
+            if return_code != 0 and button_cfg.show_errors:
+                wx.CallAfter(self._show_command_failed_dialog, source, return_code)
             wx.CallAfter(self._on_command_finished, run_id)
 
         def on_error(run_id: str, message: str) -> None:

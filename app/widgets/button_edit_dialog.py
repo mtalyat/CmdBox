@@ -83,7 +83,7 @@ class BuiltinArtPickerDialog(wx.Dialog):
 
 class ButtonEditDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, button: CommandButtonConfig | None = None):
-        super().__init__(parent, title="Edit Button", size=(520, 280))
+        super().__init__(parent, title="Edit Button", size=(520, 320))
 
         self._id = button.id if button else None
         self._result: CommandButtonConfig | None = None
@@ -97,6 +97,8 @@ class ButtonEditDialog(wx.Dialog):
         self.label_txt = wx.TextCtrl(panel, value=current.label, style=wx.TE_PROCESS_ENTER)
         self.show_name_chk = wx.CheckBox(panel, label="Show name")
         self.show_name_chk.SetValue(current.show_name)
+        self.show_errors_chk = wx.CheckBox(panel, label="Show errors")
+        self.show_errors_chk.SetValue(current.show_errors)
         self.command_txt = wx.TextCtrl(panel, value=current.command, style=wx.TE_PROCESS_ENTER)
         self.icon_value_txt = wx.TextCtrl(panel, value=current.icon_value, style=wx.TE_PROCESS_ENTER)
         self.shortcut_txt = wx.TextCtrl(panel, value=current.shortcut, style=wx.TE_PROCESS_ENTER)
@@ -117,6 +119,9 @@ class ButtonEditDialog(wx.Dialog):
 
         form.Add((0, 0))
         form.Add(self.show_name_chk, 0)
+
+        form.Add((0, 0))
+        form.Add(self.show_errors_chk, 0)
 
         form.Add(wx.StaticText(panel, label="Command"), 0, wx.ALIGN_CENTER_VERTICAL)
         form.Add(self.command_txt, 1, wx.EXPAND)
@@ -201,6 +206,7 @@ class ButtonEditDialog(wx.Dialog):
         out = CommandButtonConfig(
             label=label,
             show_name=self.show_name_chk.GetValue(),
+            show_errors=self.show_errors_chk.GetValue(),
             command=command,
             icon_value=icon_value,
             shortcut=shortcut,

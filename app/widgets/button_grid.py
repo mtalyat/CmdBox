@@ -121,6 +121,7 @@ class ButtonGridPanel(wx.Panel):
         clone = CommandButtonConfig(
             label=f"{original.label} Copy",
             show_name=original.show_name,
+            show_errors=original.show_errors,
             command=original.command,
             icon_value=original.icon_value,
             shortcut="",
