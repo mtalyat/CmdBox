@@ -4,6 +4,8 @@
       "id": "d5487f10",
       "label": "Echo Hello",
       "show_name": true,
+      "show_errors": false,
+      "show_gui_on_run": false,
       "command": "echo \"Hello from CmdBox\"",
       "icon_value": "Console",
       "shortcut": "CTRL+H"
@@ -12,9 +14,31 @@
       "id": "ffe7f34f",
       "label": "Your Name",
       "show_name": true,
+      "show_errors": false,
+      "show_gui_on_run": false,
       "command": "echo Hello there, {Name}!",
       "icon_value": "Magic Wand",
       "shortcut": "CTRL+N"
+    },
+    {
+      "id": "a4e7cb3e",
+      "label": "Show CmdBox",
+      "show_name": true,
+      "show_errors": true,
+      "show_gui_on_run": true,
+      "command": "",
+      "icon_value": "CmdBox",
+      "shortcut": "CTRL+ALT+T"
+    },
+    {
+      "id": "123940c1",
+      "label": "Error!",
+      "show_name": true,
+      "show_errors": true,
+      "show_gui_on_run": false,
+      "command": "exit /b 1",
+      "icon_value": "Error",
+      "shortcut": ""
     }
   ],
   "filters": [
@@ -35,5 +59,5 @@
       "use_regex": false
     }
   ],
-  "sash_position": 420
+  "sash_position": 250
 }

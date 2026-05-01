@@ -378,7 +378,10 @@ class MainFrame(wx.Frame):
         panel = wx.Panel(self)
         root = wx.BoxSizer(wx.VERTICAL)
 
-        self.splitter = wx.SplitterWindow(panel, style=wx.SP_LIVE_UPDATE)
+        self.splitter = wx.SplitterWindow(
+            panel,
+            style=wx.SP_LIVE_UPDATE | wx.SP_3DSASH | wx.SP_3DBORDER | wx.SP_BORDER,
+        )
 
         self.button_grid = ButtonGridPanel(
             self.splitter,
@@ -395,8 +398,14 @@ class MainFrame(wx.Frame):
         )
 
         self.splitter.SplitHorizontally(self.button_grid, self.log_panel)
+        self.button_grid.SetMinSize((-1, 140))
+        self.log_panel.SetMinSize((-1, 120))
         self.splitter.SetMinimumPaneSize(120)
-        self.splitter.SetSashPosition(self._config.sash_position)
+        if hasattr(self.splitter, "SetSashSize"):
+            self.splitter.SetSashSize(10)
+        self.splitter.SetSashGravity(0.75)
+        self._apply_sash_position()
+        wx.CallAfter(self._apply_sash_position)
 
         root.Add(self.splitter, 1, wx.EXPAND)
         panel.SetSizer(root)
@@ -542,7 +551,27 @@ class MainFrame(wx.Frame):
         self.button_grid.set_buttons(self._config.buttons)
         self.log_panel.set_filters(self._config.filters)
         if self.splitter.IsSplit():
-            self.splitter.SetSashPosition(self._config.sash_position)
+            self._apply_sash_position()
+
+    def _apply_sash_position(self) -> None:
+        if not self.splitter.IsSplit():
+            return
+
+        min_pane = max(1, self.splitter.GetMinimumPaneSize())
+        _width, height = self.splitter.GetClientSize()
+        if height <= (min_pane * 2):
+            # Not laid out enough yet; a deferred call will retry.
+            return
+
+        max_sash = max(min_pane, height - min_pane)
+        target = self._config.sash_position
+
+        # If saved value is out of bounds for current window size, pick a stable default.
+        if target < min_pane or target > max_sash:
+            target = max(min_pane, min(int(height * 0.6), max_sash))
+
+        self.splitter.SetSashPosition(target)
+        self._config.sash_position = target
 
     def _ensure_project_extension(self, path_value: Path) -> Path:
         if path_value.suffix.lower() == PROJECT_EXT:
@@ -704,9 +733,15 @@ class MainFrame(wx.Frame):
         return COMMAND_ARG_RE.sub(_replace, command)
 
     def _on_run_button(self, button_cfg: CommandButtonConfig) -> None:
+        if button_cfg.show_gui_on_run:
+            self._show_window()
+
         source = button_cfg.label
         command = self._resolve_command_arguments(button_cfg.command)
         if command is None:
+            return
+        if not command.strip():
+            self._append_log(LEVEL_INFO, source, EMPTY_SOURCE, "No command configured.")
             return
         working_dir = self._command_working_dir()
         self._append_log("CMD", source, EMPTY_SOURCE, command)

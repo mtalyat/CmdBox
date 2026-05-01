@@ -122,6 +122,7 @@ class ButtonGridPanel(wx.Panel):
             label=f"{original.label} Copy",
             show_name=original.show_name,
             show_errors=original.show_errors,
+            show_gui_on_run=original.show_gui_on_run,
             command=original.command,
             icon_value=original.icon_value,
             shortcut="",

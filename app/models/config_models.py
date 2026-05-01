@@ -15,6 +15,7 @@ class CommandButtonConfig:
     label: str = "New"
     show_name: bool = True
     show_errors: bool = True
+    show_gui_on_run: bool = False
     command: str = ""
     icon_value: str = ""
     shortcut: str = ""
@@ -29,6 +30,7 @@ class CommandButtonConfig:
             label=str(data.get("label") or "New"),
             show_name=bool(data.get("show_name", True)),
             show_errors=bool(data.get("show_errors", True)),
+            show_gui_on_run=bool(data.get("show_gui_on_run", False)),
             command=str(data.get("command") or ""),
             icon_value=str(data.get("icon_value") or ""),
             shortcut=str(data.get("shortcut") or ""),

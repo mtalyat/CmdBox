@@ -37,6 +37,11 @@ class LogPanel(wx.Panel):
 
         root = wx.BoxSizer(wx.VERTICAL)
 
+        # Stable visual cue for the splitter boundary; avoids overlaying filter controls.
+        self._drag_hint = wx.Panel(self, size=(-1, 6), style=wx.BORDER_NONE)
+        self._drag_hint.SetBackgroundColour(wx.Colour(190, 190, 190))
+        root.Add(self._drag_hint, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND, 0)
+
         top_row = wx.BoxSizer(wx.HORIZONTAL)
         top_row.Add(wx.StaticText(self, label="Filters:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
 
