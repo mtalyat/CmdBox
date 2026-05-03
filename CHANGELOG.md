@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.3
+- Show errors now defaults to off.
+
 ## 1.0.2
 - Add show cmdbox checkbox for commands.
 - Change it so the output box size is modifyable.

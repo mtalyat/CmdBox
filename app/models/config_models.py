@@ -14,7 +14,7 @@ class CommandButtonConfig:
     id: str = field(default_factory=_new_id)
     label: str = "New"
     show_name: bool = True
-    show_errors: bool = True
+    show_errors: bool = False
     show_gui_on_run: bool = False
     command: str = ""
     icon_value: str = ""
@@ -29,7 +29,7 @@ class CommandButtonConfig:
             id=str(data.get("id") or _new_id()),
             label=str(data.get("label") or "New"),
             show_name=bool(data.get("show_name", True)),
-            show_errors=bool(data.get("show_errors", True)),
+            show_errors=bool(data.get("show_errors", False)),
             show_gui_on_run=bool(data.get("show_gui_on_run", False)),
             command=str(data.get("command") or ""),
             icon_value=str(data.get("icon_value") or ""),
