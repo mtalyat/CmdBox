@@ -9,12 +9,20 @@ def _new_id() -> str:
     return uuid4().hex[:8]
 
 
+def _as_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass
 class CommandButtonConfig:
     id: str = field(default_factory=_new_id)
     label: str = "New"
     show_name: bool = True
     show_errors: bool = False
+    success_value: int = 0
     show_gui_on_run: bool = False
     command: str = ""
     icon_value: str = ""
@@ -30,6 +38,7 @@ class CommandButtonConfig:
             label=str(data.get("label") or "New"),
             show_name=bool(data.get("show_name", True)),
             show_errors=bool(data.get("show_errors", False)),
+            success_value=_as_int(data.get("success_value"), 0),
             show_gui_on_run=bool(data.get("show_gui_on_run", False)),
             command=str(data.get("command") or ""),
             icon_value=str(data.get("icon_value") or ""),

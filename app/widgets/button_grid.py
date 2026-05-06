@@ -122,6 +122,7 @@ class ButtonGridPanel(wx.Panel):
             label=f"{original.label} Copy",
             show_name=original.show_name,
             show_errors=original.show_errors,
+            success_value=original.success_value,
             show_gui_on_run=original.show_gui_on_run,
             command=original.command,
             icon_value=original.icon_value,
@@ -189,6 +190,34 @@ class ButtonGridPanel(wx.Panel):
 
         return None
 
+    def _wrap_button_label(self, ctrl: wx.Button, label: str, max_width: int) -> str:
+        text = label.strip()
+        if not text:
+            return ""
+
+        dc = wx.ClientDC(ctrl)
+        dc.SetFont(ctrl.GetFont())
+
+        wrapped_lines: list[str] = []
+        for paragraph in text.splitlines() or [text]:
+            words = paragraph.split()
+            if not words:
+                wrapped_lines.append("")
+                continue
+
+            current_line = words[0]
+            for word in words[1:]:
+                test_line = f"{current_line} {word}"
+                if dc.GetTextExtent(test_line).width <= max_width:
+                    current_line = test_line
+                    continue
+                wrapped_lines.append(current_line)
+                current_line = word
+
+            wrapped_lines.append(current_line)
+
+        return "\n".join(wrapped_lines)
+
     def _rebuild_grid(self) -> None:
         self.scroll.Freeze()
         self.grid_sizer.Clear(delete_windows=True)
@@ -203,6 +232,8 @@ class ButtonGridPanel(wx.Panel):
                 ctrl = wx.BitmapButton(self.scroll, bitmap=bitmap, size=(100, 100))
             else:
                 ctrl = wx.Button(self.scroll, label=label if show_name else "")
+                if show_name:
+                    ctrl.SetLabel(self._wrap_button_label(ctrl, label, 84))
                 if bitmap:
                     ctrl.SetBitmap(bitmap)
                     # Place icon above text for a bigger, more readable tile layout.

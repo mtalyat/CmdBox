@@ -83,7 +83,7 @@ class BuiltinArtPickerDialog(wx.Dialog):
 
 class ButtonEditDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, button: CommandButtonConfig | None = None):
-        super().__init__(parent, title="Edit Button", size=(520, 350))
+        super().__init__(parent, title="Edit Button", size=(680, 460))
 
         self._id = button.id if button else None
         self._result: CommandButtonConfig | None = None
@@ -93,22 +93,28 @@ class ButtonEditDialog(wx.Dialog):
         root = wx.BoxSizer(wx.VERTICAL)
         form = wx.FlexGridSizer(cols=2, vgap=8, hgap=10)
         form.AddGrowableCol(1, 1)
+        form.AddGrowableRow(4, 1)
 
         self.label_txt = wx.TextCtrl(panel, value=current.label, style=wx.TE_PROCESS_ENTER)
         self.show_name_chk = wx.CheckBox(panel, label="Show name")
         self.show_name_chk.SetValue(current.show_name)
         self.show_errors_chk = wx.CheckBox(panel, label="Show errors")
         self.show_errors_chk.SetValue(current.show_errors)
+        self.success_value_lbl = wx.StaticText(panel, label="Success value")
+        self.success_value_txt = wx.TextCtrl(panel, value=str(current.success_value), style=wx.TE_PROCESS_ENTER)
+        self.success_value_txt.SetMinSize((56, -1))
         self.show_gui_on_run_chk = wx.CheckBox(panel, label="Show CmdBox when run")
         self.show_gui_on_run_chk.SetValue(current.show_gui_on_run)
-        self.command_txt = wx.TextCtrl(panel, value=current.command, style=wx.TE_PROCESS_ENTER)
+        self.command_txt = wx.TextCtrl(panel, value=current.command, style=wx.TE_MULTILINE)
+        self.command_txt.SetMinSize((-1, 120))
         self.icon_value_txt = wx.TextCtrl(panel, value=current.icon_value, style=wx.TE_PROCESS_ENTER)
         self.shortcut_txt = wx.TextCtrl(panel, value=current.shortcut, style=wx.TE_PROCESS_ENTER)
 
         self.label_txt.Bind(wx.EVT_TEXT_ENTER, self._on_ok)
-        self.command_txt.Bind(wx.EVT_TEXT_ENTER, self._on_ok)
+        self.success_value_txt.Bind(wx.EVT_TEXT_ENTER, self._on_ok)
         self.icon_value_txt.Bind(wx.EVT_TEXT_ENTER, self._on_ok)
         self.shortcut_txt.Bind(wx.EVT_TEXT_ENTER, self._on_ok)
+        self.show_errors_chk.Bind(wx.EVT_CHECKBOX, self._on_show_errors_toggle)
 
         browse_btn = wx.Button(panel, label="Browse...")
         browse_btn.Bind(wx.EVT_BUTTON, self._on_browse)
@@ -123,7 +129,11 @@ class ButtonEditDialog(wx.Dialog):
         form.Add(self.show_name_chk, 0)
 
         form.Add((0, 0))
-        form.Add(self.show_errors_chk, 0)
+        show_errors_row = wx.BoxSizer(wx.HORIZONTAL)
+        show_errors_row.Add(self.show_errors_chk, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 12)
+        show_errors_row.Add(self.success_value_lbl, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 6)
+        show_errors_row.Add(self.success_value_txt, 0, wx.ALIGN_CENTER_VERTICAL)
+        form.Add(show_errors_row, 0, wx.EXPAND)
 
         form.Add((0, 0))
         form.Add(self.show_gui_on_run_chk, 0)
@@ -155,6 +165,18 @@ class ButtonEditDialog(wx.Dialog):
         root.Add(btns, 0, wx.ALL | wx.ALIGN_RIGHT, 12)
 
         panel.SetSizer(root)
+        self._sync_show_errors_ui()
+
+    def _on_show_errors_toggle(self, _evt: wx.CommandEvent) -> None:
+        self._sync_show_errors_ui()
+
+    def _sync_show_errors_ui(self) -> None:
+        enabled = self.show_errors_chk.GetValue()
+        self.success_value_lbl.Show(enabled)
+        self.success_value_txt.Show(enabled)
+        self.success_value_lbl.Enable(enabled)
+        self.success_value_txt.Enable(enabled)
+        self.Layout()
 
     def _on_browse(self, _evt: wx.CommandEvent) -> None:
         with wx.FileDialog(
@@ -184,6 +206,7 @@ class ButtonEditDialog(wx.Dialog):
         label = self.label_txt.GetValue().strip()
         command = self.command_txt.GetValue().strip()
         icon_value = self.icon_value_txt.GetValue().strip()
+        success_value_raw = self.success_value_txt.GetValue().strip()
         shortcut = "+".join(part.strip().upper() for part in self.shortcut_txt.GetValue().split("+") if part.strip())
 
         if not label:
@@ -204,10 +227,18 @@ class ButtonEditDialog(wx.Dialog):
                 if res != wx.YES:
                     return None
 
+        try:
+            success_value = int(success_value_raw or "0")
+        except ValueError:
+            if show_messages:
+                wx.MessageBox("Success value must be an integer.", "Validation", wx.OK | wx.ICON_WARNING)
+            return None
+
         out = CommandButtonConfig(
             label=label,
             show_name=self.show_name_chk.GetValue(),
             show_errors=self.show_errors_chk.GetValue(),
+            success_value=success_value,
             show_gui_on_run=self.show_gui_on_run_chk.GetValue(),
             command=command,
             icon_value=icon_value,

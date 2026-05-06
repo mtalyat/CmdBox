@@ -20,7 +20,7 @@ from app.services.runtime_paths import app_root, default_project_file, icon_file
 from app.storage.app_settings_store import AppSettingsStore
 from app.storage.config_store import ConfigStore
 from app.widgets.button_grid import ButtonGridPanel
-from app.widgets.command_arguments_dialog import CommandArgumentsDialog
+from app.widgets.command_arguments_dialog import CommandArgumentSpec, CommandArgumentsDialog
 from app.widgets.log_panel import LogPanel
 from app.widgets.run_overlay import RunOverlay
 from app.widgets.settings_dialog import SettingsDialog
@@ -689,23 +689,44 @@ class MainFrame(wx.Frame):
             return self._project_path.parent
         return app_root()
 
-    def _command_placeholders(self, command: str) -> list[str]:
+    def _parse_command_argument_spec(self, placeholder_text: str) -> CommandArgumentSpec | None:
+        raw = placeholder_text.strip()
+        if not raw:
+            return None
+
+        name_part, sep, type_part = raw.partition(":")
+        name = name_part.strip()
+        if not name:
+            return None
+
+        if not sep:
+            return CommandArgumentSpec(name=name)
+
+        tokens = [token.strip() for token in type_part.split(",")]
+        arg_type = (tokens[0] if tokens else "text").lower()
+        if arg_type not in {"text", "int", "dec", "list", "check", "path"}:
+            return CommandArgumentSpec(name=name)
+
+        args = tuple(token for token in tokens[1:] if token)
+        return CommandArgumentSpec(name=name, arg_type=arg_type, args=args)
+
+    def _command_placeholders(self, command: str) -> list[CommandArgumentSpec]:
         seen: set[str] = set()
-        placeholders: list[str] = []
+        placeholders: list[CommandArgumentSpec] = []
         for match in COMMAND_ARG_RE.finditer(command):
-            name = match.group(1).strip()
-            if not name or name in seen:
+            spec = self._parse_command_argument_spec(match.group(1))
+            if spec is None or spec.name in seen:
                 continue
-            seen.add(name)
-            placeholders.append(name)
+            seen.add(spec.name)
+            placeholders.append(spec)
         return placeholders
 
-    def _resolve_command_arguments(self, command: str) -> str | None:
+    def _resolve_command_arguments(self, command: str, command_name: str) -> str | None:
         placeholders = self._command_placeholders(command)
         if not placeholders:
             return command
 
-        dlg = CommandArgumentsDialog(None, placeholders)
+        dlg = CommandArgumentsDialog(None, command_name, placeholders)
         # Always show the argument prompt above other windows.
         dlg.SetWindowStyleFlag(dlg.GetWindowStyleFlag() | wx.STAY_ON_TOP)
         dlg.CentreOnScreen()
@@ -727,8 +748,10 @@ class MainFrame(wx.Frame):
             dlg.Destroy()
 
         def _replace(match: re.Match[str]) -> str:
-            name = match.group(1).strip()
-            return values.get(name, "")
+            spec = self._parse_command_argument_spec(match.group(1))
+            if spec is None:
+                return ""
+            return values.get(spec.name, "")
 
         return COMMAND_ARG_RE.sub(_replace, command)
 
@@ -737,7 +760,7 @@ class MainFrame(wx.Frame):
             self._show_window()
 
         source = button_cfg.label
-        command = self._resolve_command_arguments(button_cfg.command)
+        command = self._resolve_command_arguments(button_cfg.command, button_cfg.label)
         if command is None:
             return
         if not command.strip():
@@ -751,7 +774,8 @@ class MainFrame(wx.Frame):
             wx.CallAfter(self._append_log, stream_name, source, run_id, line)
 
         def on_done(run_id: str, return_code: int) -> None:
-            level = LEVEL_INFO if return_code == 0 else LEVEL_ERROR
+            is_success = return_code == button_cfg.success_value
+            level = LEVEL_INFO if is_success else LEVEL_ERROR
             wx.CallAfter(
                 self._append_log,
                 level,
@@ -759,7 +783,7 @@ class MainFrame(wx.Frame):
                 run_id,
                 f"Process exited with code {return_code}.",
             )
-            if return_code != 0 and button_cfg.show_errors:
+            if not is_success and button_cfg.show_errors:
                 wx.CallAfter(self._show_command_failed_dialog, source, return_code)
             wx.CallAfter(self._on_command_finished, run_id)
 
