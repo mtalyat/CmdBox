@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.5
+- Allow keyboard shortcuts to use other keys, including punctuation such as '/'.
+
 ## 1.0.4
 - The title of the command now shows up in the Command Arguments dialog box.
 - Adjust Command Arguments dialog box text.

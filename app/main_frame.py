@@ -480,10 +480,30 @@ class MainFrame(wx.Frame):
             if 1 <= fn <= 24:
                 return modifiers, wx.WXK_F1 + (fn - 1)
 
-        if len(key_token) == 1 and key_token.isalnum():
-            return modifiers, ord(key_token)
+        if len(key_token) == 1:
+            char = key_token[0]
+            parsed = self._vk_key_from_char(char)
+            if parsed is not None:
+                char_modifiers, vk_code = parsed
+                return modifiers | char_modifiers, vk_code
 
         return None
+
+    def _vk_key_from_char(self, char: str) -> tuple[int, int] | None:
+        if not char:
+            return None
+
+        vk_value = ctypes.windll.user32.VkKeyScanW(ord(char))
+        if vk_value == -1:
+            return None
+
+        vk_code = vk_value & 0xFF
+        shift_state = (vk_value >> 8) & 0xFF
+        modifiers = 0
+        if shift_state & 1:
+            modifiers |= wx.MOD_SHIFT
+
+        return modifiers, vk_code
 
     def _find_button_by_id(self, button_id: str) -> CommandButtonConfig | None:
         for btn in self.button_grid.get_buttons():
@@ -726,7 +746,7 @@ class MainFrame(wx.Frame):
         if not placeholders:
             return command
 
-        dlg = CommandArgumentsDialog(None, command_name, placeholders)
+        dlg = CommandArgumentsDialog(self, command_name, placeholders)
         # Always show the argument prompt above other windows.
         dlg.SetWindowStyleFlag(dlg.GetWindowStyleFlag() | wx.STAY_ON_TOP)
         dlg.CentreOnScreen()
