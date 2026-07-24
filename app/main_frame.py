@@ -426,7 +426,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_TIMER, self._on_overlay_queue_tick, self._overlay_queue_timer)
 
     def _parse_shortcut(self, shortcut: str) -> tuple[int, int] | None:
-        raw = shortcut.strip().upper()
+        raw = shortcut.strip()
         if not raw:
             return None
 
@@ -437,13 +437,14 @@ class MainFrame(wx.Frame):
         modifiers = 0
         key_token = ""
         for part in parts:
-            if part in {"CTRL", "CONTROL"}:
+            part_upper = part.upper()
+            if part_upper in {"CTRL", "CONTROL"}:
                 modifiers |= wx.MOD_CONTROL
-            elif part == "ALT":
+            elif part_upper == "ALT":
                 modifiers |= wx.MOD_ALT
-            elif part == "SHIFT":
+            elif part_upper == "SHIFT":
                 modifiers |= wx.MOD_SHIFT
-            elif part in {"WIN", "CMD", "SUPER"}:
+            elif part_upper in {"WIN", "CMD", "SUPER"}:
                 modifiers |= wx.MOD_WIN
             elif key_token:
                 return None
@@ -472,16 +473,19 @@ class MainFrame(wx.Frame):
             "LEFT": wx.WXK_LEFT,
             "RIGHT": wx.WXK_RIGHT,
         }
-        if key_token in special_keys:
-            return modifiers, special_keys[key_token]
+        key_token_upper = key_token.upper()
+        if key_token_upper in special_keys:
+            return modifiers, special_keys[key_token_upper]
 
-        if key_token.startswith("F") and key_token[1:].isdigit():
-            fn = int(key_token[1:])
+        if key_token_upper.startswith("F") and key_token_upper[1:].isdigit():
+            fn = int(key_token_upper[1:])
             if 1 <= fn <= 24:
                 return modifiers, wx.WXK_F1 + (fn - 1)
 
         if len(key_token) == 1:
             char = key_token[0]
+            if char.isalnum():
+                return modifiers, ord(char.upper())
             parsed = self._vk_key_from_char(char)
             if parsed is not None:
                 char_modifiers, vk_code = parsed
@@ -516,7 +520,7 @@ class MainFrame(wx.Frame):
             self.UnregisterHotKey(hotkey_id)
         self._hotkey_bindings.clear()
 
-        used: set[tuple[int, int]] = set()
+        parsed_shortcuts: dict[tuple[int, int], list[CommandButtonConfig]] = {}
         for btn in self.button_grid.get_buttons():
             if not btn.shortcut.strip():
                 continue
@@ -526,10 +530,22 @@ class MainFrame(wx.Frame):
                 self._append_log(LEVEL_ERROR, "HOTKEY", EMPTY_SOURCE, f"Invalid shortcut '{btn.shortcut}' for '{btn.label}'")
                 continue
 
-            if parsed in used:
-                self._append_log(LEVEL_ERROR, "HOTKEY", EMPTY_SOURCE, f"Duplicate shortcut '{btn.shortcut}' for '{btn.label}'")
+            parsed_shortcuts.setdefault(parsed, []).append(btn)
+
+        for parsed, conflicts in parsed_shortcuts.items():
+            if len(conflicts) > 1:
+                details = "; ".join(
+                    f"{item.label} ({item.shortcut}) -> {item.command}" for item in conflicts
+                )
+                self._append_log(
+                    LEVEL_ERROR,
+                    "HOTKEY",
+                    EMPTY_SOURCE,
+                    f"Duplicate shortcut '{conflicts[0].shortcut}' used by: {details}",
+                )
                 continue
-            used.add(parsed)
+
+            btn = conflicts[0]
 
             hotkey_id = self._next_hotkey_id
             self._next_hotkey_id += 1
