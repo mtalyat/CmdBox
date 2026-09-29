@@ -35,7 +35,7 @@ python main.py
 ## Project Files
 
 - CmdBox project files use the `.cmdbox` extension.
-- Use the File menu to create/open/save project settings.
+- Use the File menu to create/open/save CmdBox settings files.
 - If you launch CmdBox without a file argument, it reopens the most recently used project file (if it still exists).
 - You can launch directly into a project with:
 

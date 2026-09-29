@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0
+- Double-clicking a .cmdbox file now forwards to the running CmdBox instance instead of opening a second instance.
+- If there are unsaved changes when an external .cmdbox open request arrives, CmdBox prompts to save before replacing the loaded project.
+- Add profiles (Profile menu) that are stored inside each .cmdbox file.
+- Each profile can define variables (NAME=VALUE) for command substitution, e.g. {DIR}/my.exe.
+- Each profile can filter available buttons for that profile without changing the shared command button definitions.
+- New buttons are automatically available in all existing profiles.
+- New filters now default to enabled.
+- Profile settings always show the button availability checklist (removed the extra "limit available buttons" toggle).
+- Filtered-out buttons are tinted in the grid and do not run (including shortcuts).
+- Improved shortcut parsing and duplicate detection (e.g. Ctrl+Alt+T and Ctrl+Alt+Shift+T are no longer treated as duplicates unless they actually are).
+
 ## 1.0.5
 - Allow keyboard shortcuts to use other keys, including punctuation such as '/'.
 

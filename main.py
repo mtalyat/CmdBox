@@ -1,10 +1,12 @@
 import os
 from pathlib import Path
+import socket
 import sys
 import threading
 import ctypes
 
 from app.main_frame import run_app
+from app.services.single_instance_ipc import IPC_HOST, IPC_PORT, build_open_project_message
 
 
 def _set_windows_app_user_model_id() -> None:
@@ -48,12 +50,24 @@ def _disable_py313_threading_shutdown() -> None:
         pass
 
 
+def _forward_project_open_request(project_path: Path) -> bool:
+    try:
+        with socket.create_connection((IPC_HOST, IPC_PORT), timeout=0.35) as conn:
+            conn.sendall(build_open_project_message(project_path))
+            conn.settimeout(0.5)
+            return conn.recv(16).startswith(b"OK")
+    except OSError:
+        return False
+
+
 if __name__ == "__main__":
     _set_windows_app_user_model_id()
     _install_py313_threading_shutdown_guard()
     exit_code = 0
     try:
         project_arg = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else None
+        if project_arg and _forward_project_open_request(project_arg):
+            sys.exit(0)
         run_app(project_path=project_arg)
     except BaseException:
         exit_code = 1

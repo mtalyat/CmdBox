@@ -236,6 +236,7 @@ class ButtonEditDialog(wx.Dialog):
 
         out = CommandButtonConfig(
             label=label,
+            enabled=True,
             show_name=self.show_name_chk.GetValue(),
             show_errors=self.show_errors_chk.GetValue(),
             success_value=success_value,

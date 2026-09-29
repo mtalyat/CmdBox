@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 import ctypes
+import socket
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -12,16 +14,18 @@ import wx
 import wx.adv
 
 from app.models.app_settings_models import AppSettings
-from app.models.config_models import AppConfig, CommandButtonConfig, FilterConfig
+from app.models.config_models import AppConfig, CommandButtonConfig, FilterConfig, ProjectConfig
 from app.services.command_runner import CommandRunner
 from app.services.log_service import LogEntry, LogService
 from app.services.overlay_queue import OverlayQueue
 from app.services.runtime_paths import app_root, default_project_file, icon_file, icons_dir, user_data_dir
+from app.services.single_instance_ipc import IPC_HOST, IPC_PORT, parse_open_project_message
 from app.storage.app_settings_store import AppSettingsStore
 from app.storage.config_store import ConfigStore
 from app.widgets.button_grid import ButtonGridPanel
 from app.widgets.command_arguments_dialog import CommandArgumentSpec, CommandArgumentsDialog
 from app.widgets.log_panel import LogPanel
+from app.widgets.project_settings_dialog import ProjectSettingsDialog
 from app.widgets.run_overlay import RunOverlay
 from app.widgets.settings_dialog import SettingsDialog
 
@@ -88,6 +92,7 @@ class MainFrame(wx.Frame):
         self._recent_projects: list[Path] = self._read_recent_projects()
         if startup_project:
             self._recent_projects = self._merge_recent_project(startup_project, self._recent_projects)
+        self._project_switch_items: dict[int, str] = {}
         self._dirty = False
         self._app_settings_store = AppSettingsStore()
         self._app_settings: AppSettings = self._app_settings_store.load()
@@ -104,6 +109,9 @@ class MainFrame(wx.Frame):
         self._overlay_queue_timer = wx.Timer(self)
         self._is_exiting = False
         self._tray_icon = CmdBoxTaskBarIcon(self)
+        self._ipc_stop = threading.Event()
+        self._ipc_server_socket: socket.socket | None = None
+        self._ipc_server_thread: threading.Thread | None = None
 
         self._create_menu()
         self._build_ui()
@@ -112,6 +120,7 @@ class MainFrame(wx.Frame):
         self._refresh_hotkeys()
         self._refresh_tray_icon()
         self._overlay_queue_timer.Start(350)
+        self._start_external_open_server()
 
         self.Centre()
 
@@ -331,9 +340,11 @@ class MainFrame(wx.Frame):
     def _create_menu(self) -> None:
         menu_bar = wx.MenuBar()
         file_menu = wx.Menu()
+        project_menu = wx.Menu()
         edit_menu = wx.Menu()
         add_menu = wx.Menu()
         self._open_recent_menu = wx.Menu()
+        self._project_switch_menu = wx.Menu()
 
         self._new_item = file_menu.Append(wx.ID_NEW, "&New\tCtrl+N")
         self._open_item = file_menu.Append(wx.ID_OPEN, "&Open...\tCtrl+O")
@@ -345,14 +356,43 @@ class MainFrame(wx.Frame):
         file_menu.AppendSeparator()
         self._exit_item = file_menu.Append(wx.ID_EXIT, "E&xit")
 
+        self._new_profile_item = project_menu.Append(wx.ID_ANY, "&New Profile...")
+        self._edit_profile_item = project_menu.Append(wx.ID_ANY, "&Edit Current Profile...")
+        self._delete_profile_item = project_menu.Append(wx.ID_ANY, "&Delete Current Profile")
+        project_menu.AppendSeparator()
+        project_menu.AppendSubMenu(self._project_switch_menu, "&Switch Profile")
+
         self._add_button_item = add_menu.Append(wx.ID_ANY, "Add &Button")
         self._add_filter_item = add_menu.Append(wx.ID_ANY, "Add &Filter")
         edit_menu.AppendSubMenu(add_menu, "&Add")
 
         menu_bar.Append(file_menu, "&File")
+        menu_bar.Append(project_menu, "P&rofile")
         menu_bar.Append(edit_menu, "&Edit")
         self.SetMenuBar(menu_bar)
         self._refresh_recent_menu()
+        self._refresh_project_menu()
+
+    def _refresh_project_menu(self) -> None:
+        if not hasattr(self, "_project_switch_menu"):
+            return
+
+        for item in list(self._project_switch_menu.GetMenuItems()):
+            self._project_switch_menu.Delete(item.GetId())
+        self._project_switch_items.clear()
+
+        if not self._config.projects:
+            empty_item = self._project_switch_menu.Append(wx.ID_ANY, "(No Profiles)")
+            empty_item.Enable(False)
+            return
+
+        active = self._current_project()
+        for profile in self._config.projects:
+            item_id = wx.Window.NewControlId()
+            item = self._project_switch_menu.AppendCheckItem(item_id, profile.name)
+            item.Check(active.id == profile.id)
+            self.Bind(wx.EVT_MENU, self._on_switch_project_profile, item)
+            self._project_switch_items[item_id] = profile.id
 
     def _refresh_recent_menu(self) -> None:
         if not hasattr(self, "_open_recent_menu"):
@@ -419,6 +459,9 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_save_as_project, self._save_as_item)
         self.Bind(wx.EVT_MENU, self._on_open_settings, self._settings_item)
         self.Bind(wx.EVT_MENU, self._on_exit, self._exit_item)
+        self.Bind(wx.EVT_MENU, self._on_new_project_profile, self._new_profile_item)
+        self.Bind(wx.EVT_MENU, self._on_edit_project_profile, self._edit_profile_item)
+        self.Bind(wx.EVT_MENU, self._on_delete_project_profile, self._delete_profile_item)
         self.Bind(wx.EVT_MENU, self._on_add_button_menu, self._add_button_item)
         self.Bind(wx.EVT_MENU, self._on_add_filter_menu, self._add_filter_item)
         self.Bind(wx.EVT_SPLITTER_SASH_POS_CHANGED, self._on_sash_changed, self.splitter)
@@ -522,6 +565,10 @@ class MainFrame(wx.Frame):
 
         parsed_shortcuts: dict[tuple[int, int], list[CommandButtonConfig]] = {}
         for btn in self.button_grid.get_buttons():
+            if not btn.enabled:
+                continue
+            if not self._is_button_allowed_for_project(btn.id):
+                continue
             if not btn.shortcut.strip():
                 continue
 
@@ -560,13 +607,124 @@ class MainFrame(wx.Frame):
         if not button_id:
             return
         btn = self._find_button_by_id(button_id)
-        if btn:
+        if btn and btn.enabled and self._is_button_allowed_for_project(btn.id):
             self._on_run_button(btn)
 
+    def _current_project(self) -> ProjectConfig:
+        for profile in self._config.projects:
+            if profile.id == self._config.active_project_id:
+                return profile
+
+        if not self._config.projects:
+            default_profile = ProjectConfig(name="Default")
+            self._config.projects = [default_profile]
+        self._config.active_project_id = self._config.projects[0].id
+        return self._config.projects[0]
+
+    def _is_button_allowed_for_project(self, button_id: str) -> bool:
+        profile = self._current_project()
+        if not profile.allowed_button_ids:
+            return True
+        return button_id in set(profile.allowed_button_ids)
+
+    def _start_external_open_server(self) -> None:
+        server_socket: socket.socket | None = None
+        try:
+            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server_socket.bind((IPC_HOST, IPC_PORT))
+            server_socket.listen(5)
+            server_socket.settimeout(0.5)
+            self._ipc_server_socket = server_socket
+        except OSError:
+            try:
+                if server_socket is not None:
+                    server_socket.close()
+            except Exception:
+                pass
+            self._ipc_server_socket = None
+            return
+
+        self._ipc_server_thread = threading.Thread(
+            target=self._external_open_server_loop,
+            name="CmdBoxOpenRelay",
+            daemon=True,
+        )
+        self._ipc_server_thread.start()
+
+    def _external_open_server_loop(self) -> None:
+        while not self._ipc_stop.is_set():
+            if self._ipc_server_socket is None:
+                return
+
+            try:
+                conn, _addr = self._ipc_server_socket.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+
+            with conn:
+                try:
+                    conn.settimeout(1.0)
+                    payload = b""
+                    while True:
+                        chunk = conn.recv(4096)
+                        if not chunk:
+                            break
+                        payload += chunk
+                        if b"\n" in chunk:
+                            break
+
+                    path_value = parse_open_project_message(payload)
+                    if path_value is None:
+                        conn.sendall(b"ERR\n")
+                        continue
+
+                    wx.CallAfter(self._on_external_open_project, path_value)
+                    conn.sendall(b"OK\n")
+                except Exception:
+                    try:
+                        conn.sendall(b"ERR\n")
+                    except Exception:
+                        pass
+
+    def _stop_external_open_server(self) -> None:
+        self._ipc_stop.set()
+        sock = self._ipc_server_socket
+        self._ipc_server_socket = None
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+        thread = self._ipc_server_thread
+        self._ipc_server_thread = None
+        if thread and thread.is_alive():
+            thread.join(timeout=1.0)
+
+    def _on_external_open_project(self, path_value: Path) -> None:
+        try:
+            project_path = path_value.resolve()
+        except Exception:
+            return
+
+        if not project_path.exists() or not project_path.is_file():
+            wx.MessageBox(f"Project file was not found:\n{project_path}", "Open Project", wx.OK | wx.ICON_WARNING)
+            return
+
+        self._show_window()
+        if not self._can_discard_changes():
+            return
+
+        self._load_project_from_path(project_path)
+
     def _project_label(self) -> str:
+        profile_name = self._current_project().name
         if self._project_path:
-            return self._project_path.name
-        return f"Untitled{PROJECT_EXT}"
+            return f"{self._project_path.name} [{profile_name}]"
+        return f"Untitled{PROJECT_EXT} [{profile_name}]"
 
     def _update_title(self) -> None:
         dirty = "*" if self._dirty else ""
@@ -585,9 +743,11 @@ class MainFrame(wx.Frame):
 
     def _apply_config_to_ui(self) -> None:
         self.button_grid.set_buttons(self._config.buttons)
+        self.button_grid.set_allowed_button_ids(self._current_project().allowed_button_ids)
         self.log_panel.set_filters(self._config.filters)
         if self.splitter.IsSplit():
             self._apply_sash_position()
+        self._refresh_project_menu()
 
     def _apply_sash_position(self) -> None:
         if not self.splitter.IsSplit():
@@ -746,21 +906,25 @@ class MainFrame(wx.Frame):
         args = tuple(token for token in tokens[1:] if token)
         return CommandArgumentSpec(name=name, arg_type=arg_type, args=args)
 
-    def _command_placeholders(self, command: str) -> list[CommandArgumentSpec]:
+    def _command_placeholders(self, command: str, project_vars: dict[str, str]) -> list[CommandArgumentSpec]:
         seen: set[str] = set()
         placeholders: list[CommandArgumentSpec] = []
         for match in COMMAND_ARG_RE.finditer(command):
-            spec = self._parse_command_argument_spec(match.group(1))
+            raw = match.group(1).strip()
+            spec = self._parse_command_argument_spec(raw)
             if spec is None or spec.name in seen:
+                continue
+            if ":" not in raw and spec.name in project_vars:
                 continue
             seen.add(spec.name)
             placeholders.append(spec)
         return placeholders
 
     def _resolve_command_arguments(self, command: str, command_name: str) -> str | None:
-        placeholders = self._command_placeholders(command)
+        project_vars = self._current_project().variables
+        placeholders = self._command_placeholders(command, project_vars)
         if not placeholders:
-            return command
+            return self._substitute_project_variables(command, project_vars)
 
         dlg = CommandArgumentsDialog(self, command_name, placeholders)
         # Always show the argument prompt above other windows.
@@ -784,14 +948,36 @@ class MainFrame(wx.Frame):
             dlg.Destroy()
 
         def _replace(match: re.Match[str]) -> str:
-            spec = self._parse_command_argument_spec(match.group(1))
+            raw = match.group(1).strip()
+            spec = self._parse_command_argument_spec(raw)
             if spec is None:
                 return ""
+            if ":" not in raw and spec.name in project_vars:
+                return project_vars.get(spec.name, "")
             return values.get(spec.name, "")
 
         return COMMAND_ARG_RE.sub(_replace, command)
 
+    def _substitute_project_variables(self, command: str, project_vars: dict[str, str]) -> str:
+        def _replace(match: re.Match[str]) -> str:
+            raw = match.group(1).strip()
+            spec = self._parse_command_argument_spec(raw)
+            if spec is None:
+                return ""
+            if ":" not in raw and spec.name in project_vars:
+                return project_vars.get(spec.name, "")
+            return match.group(0)
+
+        return COMMAND_ARG_RE.sub(_replace, command)
+
     def _on_run_button(self, button_cfg: CommandButtonConfig) -> None:
+        if not button_cfg.enabled:
+            self._append_log(LEVEL_INFO, button_cfg.label, EMPTY_SOURCE, "Button is disabled.")
+            return
+        if not self._is_button_allowed_for_project(button_cfg.id):
+            self._append_log(LEVEL_INFO, button_cfg.label, EMPTY_SOURCE, "Button is filtered out for current project.")
+            return
+
         if button_cfg.show_gui_on_run:
             self._show_window()
 
@@ -838,7 +1024,16 @@ class MainFrame(wx.Frame):
         self._on_command_started(run_id, button_cfg)
 
     def _on_buttons_changed(self, buttons: list[CommandButtonConfig]) -> None:
+        previous_ids = {btn.id for btn in self._config.buttons}
+        incoming_ids = {btn.id for btn in buttons}
+        added_ids = incoming_ids - previous_ids
+
         self._config.buttons = buttons
+        valid_ids = incoming_ids
+        for profile in self._config.projects:
+            profile.allowed_button_ids = [button_id for button_id in profile.allowed_button_ids if button_id in valid_ids]
+            if added_ids and profile.allowed_button_ids:
+                profile.allowed_button_ids.extend(sorted(added_ids))
         try:
             self._save_config()
             self._refresh_hotkeys()
@@ -938,6 +1133,66 @@ class MainFrame(wx.Frame):
     def _on_add_filter_menu(self, _evt: wx.CommandEvent) -> None:
         self.log_panel.add_filter()
 
+    def _on_new_project_profile(self, _evt: wx.CommandEvent) -> None:
+        with wx.TextEntryDialog(self, "Profile name:", "New Profile", value="Profile") as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            name = dlg.GetValue().strip()
+        if not name:
+            wx.MessageBox("Profile name is required.", "Validation", wx.OK | wx.ICON_WARNING)
+            return
+
+        profile = ProjectConfig(name=name)
+        self._config.projects.append(profile)
+        self._config.active_project_id = profile.id
+        self._apply_config_to_ui()
+        self._refresh_hotkeys()
+        self._mark_dirty(True)
+
+    def _on_edit_project_profile(self, _evt: wx.CommandEvent) -> None:
+        current = self._current_project()
+        dlg = ProjectSettingsDialog(self, current, self._config.buttons)
+        if dlg.ShowModal() == wx.ID_OK:
+            updated = dlg.get_value()
+            if updated:
+                for i, profile in enumerate(self._config.projects):
+                    if profile.id == updated.id:
+                        self._config.projects[i] = updated
+                        break
+                self._apply_config_to_ui()
+                self._refresh_hotkeys()
+                self._mark_dirty(True)
+        dlg.Destroy()
+
+    def _on_delete_project_profile(self, _evt: wx.CommandEvent) -> None:
+        if len(self._config.projects) <= 1:
+            wx.MessageBox("At least one profile is required.", "Profile", wx.OK | wx.ICON_INFORMATION)
+            return
+
+        current = self._current_project()
+        res = wx.MessageBox(
+            f"Delete profile '{current.name}'?",
+            "Delete Profile",
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+        )
+        if res != wx.YES:
+            return
+
+        self._config.projects = [p for p in self._config.projects if p.id != current.id]
+        self._config.active_project_id = self._config.projects[0].id
+        self._apply_config_to_ui()
+        self._refresh_hotkeys()
+        self._mark_dirty(True)
+
+    def _on_switch_project_profile(self, evt: wx.CommandEvent) -> None:
+        profile_id = self._project_switch_items.get(evt.GetId())
+        if not profile_id or profile_id == self._config.active_project_id:
+            return
+        self._config.active_project_id = profile_id
+        self._apply_config_to_ui()
+        self._refresh_hotkeys()
+        self._mark_dirty(True)
+
     def _on_close(self, evt: wx.CloseEvent) -> None:
         if not self._is_exiting and evt.CanVeto():
             self._hide_window_to_tray()
@@ -964,6 +1219,7 @@ class MainFrame(wx.Frame):
             pass
         self._run_overlay.hide_overlay()
         self._run_overlay.Destroy()
+        self._stop_external_open_server()
         self._runner.shutdown()
         self.Destroy()
 

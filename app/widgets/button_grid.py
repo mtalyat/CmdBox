@@ -28,6 +28,7 @@ class ButtonGridPanel(wx.Panel):
         self._buttons: list[CommandButtonConfig] = deepcopy(buttons)
         self._on_buttons_changed = on_buttons_changed
         self._on_run_button = on_run_button
+        self._allowed_button_ids: set[str] | None = None
 
         root = wx.BoxSizer(wx.VERTICAL)
 
@@ -47,6 +48,13 @@ class ButtonGridPanel(wx.Panel):
 
     def set_buttons(self, buttons: list[CommandButtonConfig]) -> None:
         self._buttons = deepcopy(buttons)
+        self._rebuild_grid()
+
+    def set_allowed_button_ids(self, allowed_button_ids: list[str] | None) -> None:
+        if allowed_button_ids:
+            self._allowed_button_ids = set(allowed_button_ids)
+        else:
+            self._allowed_button_ids = None
         self._rebuild_grid()
 
     def _emit_changed(self) -> None:
@@ -73,7 +81,16 @@ class ButtonGridPanel(wx.Panel):
         menu.Destroy()
 
     def _on_button_click(self, button: CommandButtonConfig) -> None:
+        if not self._is_button_available(button):
+            return
         self._on_run_button(button)
+
+    def _is_button_available(self, button: CommandButtonConfig) -> bool:
+        if not button.enabled:
+            return False
+        if self._allowed_button_ids is None:
+            return True
+        return button.id in self._allowed_button_ids
 
     def _on_button_context(self, evt: wx.ContextMenuEvent, button_id: str) -> None:
         menu = wx.Menu()
@@ -120,6 +137,7 @@ class ButtonGridPanel(wx.Panel):
         original = self._buttons[index]
         clone = CommandButtonConfig(
             label=f"{original.label} Copy",
+            enabled=original.enabled,
             show_name=original.show_name,
             show_errors=original.show_errors,
             success_value=original.success_value,
@@ -218,6 +236,19 @@ class ButtonGridPanel(wx.Panel):
 
         return "\n".join(wrapped_lines)
 
+    def _apply_enabled_visual_state(self, ctrl: wx.Window, enabled: bool) -> None:
+        if enabled:
+            ctrl.Enable(True)
+            ctrl.SetBackgroundColour(wx.NullColour)
+            ctrl.SetForegroundColour(wx.NullColour)
+            return
+
+        # Use a subtle neutral tint so disabled command tiles stand out.
+        # Keep the control enabled so users can still right-click to edit/re-enable.
+        ctrl.Enable(True)
+        ctrl.SetBackgroundColour(wx.Colour(230, 232, 236))
+        ctrl.SetForegroundColour(wx.Colour(110, 114, 120))
+
     def _rebuild_grid(self) -> None:
         self.scroll.Freeze()
         self.grid_sizer.Clear(delete_windows=True)
@@ -245,9 +276,15 @@ class ButtonGridPanel(wx.Panel):
             tooltip = btn_cfg.command
             if btn_cfg.shortcut:
                 tooltip = f"{tooltip}\nShortcut: {btn_cfg.shortcut}"
+            is_available = self._is_button_available(btn_cfg)
+            if not btn_cfg.enabled:
+                tooltip = f"{tooltip}\nDisabled"
+            elif self._allowed_button_ids is not None and btn_cfg.id not in self._allowed_button_ids:
+                tooltip = f"{tooltip}\nFiltered out by current project"
             ctrl.SetToolTip(tooltip)
             ctrl.SetMinSize((100, 100))
             ctrl.SetMaxSize((100, 100))
+            self._apply_enabled_visual_state(ctrl, is_available)
 
             ctrl.Bind(wx.EVT_BUTTON, lambda _e, b=btn_cfg: self._on_button_click(b))
             ctrl.Bind(
