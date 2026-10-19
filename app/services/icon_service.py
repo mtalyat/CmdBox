@@ -204,8 +204,9 @@ def resolve_button_bitmap(
 
     image = resolve_icon_image(icon_value)
     if image and image.IsOk():
-        colored = tint_grayscale_image(image, button_icon_color(button_cfg))
-        return wx.Bitmap(colored.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
+        scaled = image.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH)
+        colored = tint_grayscale_image(scaled, button_icon_color(button_cfg))
+        return wx.Bitmap(colored)
 
     art_id = getattr(wx, icon_value, None)
     if art_id:
