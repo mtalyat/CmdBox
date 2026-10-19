@@ -27,6 +27,8 @@ class CommandButtonConfig:
     show_gui_on_run: bool = False
     command: str = ""
     icon_value: str = ""
+    icon_default_color: str = "#FFFFFF"
+    icon_custom_color: str = ""
     shortcut: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -44,6 +46,8 @@ class CommandButtonConfig:
             show_gui_on_run=bool(data.get("show_gui_on_run", False)),
             command=str(data.get("command") or ""),
             icon_value=str(data.get("icon_value") or ""),
+            icon_default_color=str(data.get("icon_default_color") or "#FFFFFF"),
+            icon_custom_color=str(data.get("icon_custom_color") or ""),
             shortcut=str(data.get("shortcut") or ""),
         )
 

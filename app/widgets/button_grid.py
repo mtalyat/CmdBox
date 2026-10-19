@@ -1,21 +1,17 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from pathlib import Path
 from typing import Callable
 
 import wx
 
 from app.models.config_models import CommandButtonConfig
-from app.services.runtime_paths import icons_dir
+from app.services.icon_service import resolve_button_bitmap
 from app.widgets.button_edit_dialog import ButtonEditDialog
 
 
 ButtonsChangedHandler = Callable[[list[CommandButtonConfig]], None]
 ButtonRunHandler = Callable[[CommandButtonConfig], None]
-ICON_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".ico", ".gif")
-
-
 class ButtonGridPanel(wx.Panel):
     def __init__(
         self,
@@ -144,6 +140,8 @@ class ButtonGridPanel(wx.Panel):
             show_gui_on_run=original.show_gui_on_run,
             command=original.command,
             icon_value=original.icon_value,
+            icon_default_color=original.icon_default_color,
+            icon_custom_color=original.icon_custom_color,
             shortcut="",
         )
         self._buttons.insert(index + 1, clone)
@@ -174,39 +172,7 @@ class ButtonGridPanel(wx.Panel):
         return -1
 
     def _resolve_bitmap(self, btn_cfg: CommandButtonConfig, size: tuple[int, int] = (16, 16)) -> wx.Bitmap | None:
-        icon_value = btn_cfg.icon_value.strip()
-        if not icon_value:
-            return None
-
-        p = Path(icon_value)
-        if p.exists() and p.is_file():
-            img = wx.Image(str(p))
-            if img.IsOk():
-                return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
-
-        icon_root = icons_dir()
-        if not p.is_absolute() and icon_root.exists() and icon_root.is_dir():
-            if p.suffix:
-                candidate = icon_root / p.name
-                if candidate.exists() and candidate.is_file():
-                    img = wx.Image(str(candidate))
-                    if img.IsOk():
-                        return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
-            else:
-                for ext in ICON_EXTENSIONS:
-                    candidate = icon_root / f"{icon_value}{ext}"
-                    if candidate.exists() and candidate.is_file():
-                        img = wx.Image(str(candidate))
-                        if img.IsOk():
-                            return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
-
-        art_id = getattr(wx, icon_value, None)
-        if art_id:
-            bmp = wx.ArtProvider.GetBitmap(art_id, wx.ART_BUTTON, size)
-            if bmp and bmp.IsOk():
-                return bmp
-
-        return None
+        return resolve_button_bitmap(btn_cfg, size=size, art_client=wx.ART_BUTTON)
 
     def _wrap_button_label(self, ctrl: wx.Button, label: str, max_width: int) -> str:
         text = label.strip()

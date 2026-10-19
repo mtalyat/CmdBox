@@ -16,9 +16,10 @@ import wx.adv
 from app.models.app_settings_models import AppSettings
 from app.models.config_models import AppConfig, CommandButtonConfig, FilterConfig, ProjectConfig
 from app.services.command_runner import CommandRunner
+from app.services.icon_service import resolve_button_bitmap
 from app.services.log_service import LogEntry, LogService
 from app.services.overlay_queue import OverlayQueue
-from app.services.runtime_paths import app_root, default_project_file, icon_file, icons_dir, user_data_dir
+from app.services.runtime_paths import app_root, default_project_file, icon_file, user_data_dir
 from app.services.single_instance_ipc import IPC_HOST, IPC_PORT, parse_open_project_message
 from app.storage.app_settings_store import AppSettingsStore
 from app.storage.config_store import ConfigStore
@@ -41,7 +42,6 @@ PROJECT_EXT = ".cmdbox"
 PROJECT_WILDCARD = "CmdBox Project (*.cmdbox)|*.cmdbox|JSON files (*.json)|*.json|All files (*.*)|*.*"
 RECENT_PROJECT_FILE = ".cmdbox_recent"
 RECENT_PROJECT_LIMIT = 10
-ICON_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".ico", ".gif")
 COMMAND_ARG_RE = re.compile(r"\{([^{}]+)\}")
 
 
@@ -125,39 +125,7 @@ class MainFrame(wx.Frame):
         self.Centre()
 
     def _resolve_command_bitmap(self, button_cfg: CommandButtonConfig, size: tuple[int, int] = (24, 24)) -> wx.Bitmap | None:
-        icon_value = button_cfg.icon_value.strip()
-        if not icon_value:
-            return None
-
-        p = Path(icon_value)
-        if p.exists() and p.is_file():
-            img = wx.Image(str(p))
-            if img.IsOk():
-                return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
-
-        icon_root = icons_dir()
-        if not p.is_absolute() and icon_root.exists() and icon_root.is_dir():
-            if p.suffix:
-                candidate = icon_root / p.name
-                if candidate.exists() and candidate.is_file():
-                    img = wx.Image(str(candidate))
-                    if img.IsOk():
-                        return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
-            else:
-                for ext in ICON_EXTENSIONS:
-                    candidate = icon_root / f"{icon_value}{ext}"
-                    if candidate.exists() and candidate.is_file():
-                        img = wx.Image(str(candidate))
-                        if img.IsOk():
-                            return wx.Bitmap(img.Scale(size[0], size[1], wx.IMAGE_QUALITY_HIGH))
-
-        art_id = getattr(wx, icon_value, None)
-        if art_id:
-            bmp = wx.ArtProvider.GetBitmap(art_id, wx.ART_OTHER, size)
-            if bmp and bmp.IsOk():
-                return bmp
-
-        return None
+        return resolve_button_bitmap(button_cfg, size=size, art_client=wx.ART_OTHER)
 
     def _show_run_overlay(self, button_cfg: CommandButtonConfig) -> None:
         queue_index, _queue_count = self._overlay_queue.update(self._overlay_instance_id, active=bool(self._active_runs))

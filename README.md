@@ -10,6 +10,7 @@ CmdBox is a wxPython desktop app for running shell commands from an editable gri
   - Label text
   - Shell command
   - Icon value: file path or built-in wx ART_ name
+  - Dynamic grayscale icon recolor with app-configured per-icon default color and optional custom override
   - Optional shortcut (for example: `Ctrl+Alt+1`, `Ctrl+Shift+R`, `Alt+F2`)
 - Live log panel for command output:
   - Captures stdout and stderr
@@ -47,6 +48,13 @@ python main.py .\my-project.cmdbox
 ```
 
 - If you register a Windows file association for `.cmdbox`, double-clicking a project file can open it directly.
+
+## Icon Default Colors
+
+- Configure shipped icon defaults in `icons/icon-default-colors.json`.
+- Keys can be an icon stem (for example `play`), file name, or full icon value.
+- Values must be hex colors like `#22C55E`.
+- Users can still choose a custom override color per button in the editor.
 
 To register the association for your current user on Windows:
 
