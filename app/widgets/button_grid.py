@@ -6,7 +6,7 @@ from typing import Callable
 import wx
 
 from app.models.config_models import CommandButtonConfig
-from app.services.icon_service import resolve_button_bitmap
+from app.services.icon_service import normalize_hex_color, resolve_button_bitmap
 from app.widgets.button_edit_dialog import ButtonEditDialog
 
 
@@ -215,6 +215,35 @@ class ButtonGridPanel(wx.Panel):
         ctrl.SetBackgroundColour(wx.Colour(230, 232, 236))
         ctrl.SetForegroundColour(wx.Colour(110, 114, 120))
 
+    def _iconless_custom_color(self, button_cfg: CommandButtonConfig) -> wx.Colour | None:
+        if button_cfg.icon_value.strip():
+            return None
+        color_hex = normalize_hex_color(button_cfg.icon_custom_color, "")
+        if not color_hex:
+            return None
+        color = wx.Colour(color_hex)
+        if not color.IsOk():
+            return None
+        return color
+
+    def _text_color_for_background(self, color: wx.Colour) -> wx.Colour:
+        luminance = (color.Red() * 299 + color.Green() * 587 + color.Blue() * 114) / 1000
+        return wx.Colour(20, 20, 20) if luminance > 155 else wx.Colour(245, 245, 245)
+
+    def _bind_hover_black_text(self, ctrl: wx.Window, normal_text: wx.Colour) -> None:
+        def _on_enter(evt: wx.MouseEvent) -> None:
+            ctrl.SetForegroundColour(wx.Colour(0, 0, 0))
+            ctrl.Refresh()
+            evt.Skip()
+
+        def _on_leave(evt: wx.MouseEvent) -> None:
+            ctrl.SetForegroundColour(normal_text)
+            ctrl.Refresh()
+            evt.Skip()
+
+        ctrl.Bind(wx.EVT_ENTER_WINDOW, _on_enter)
+        ctrl.Bind(wx.EVT_LEAVE_WINDOW, _on_leave)
+
     def _rebuild_grid(self) -> None:
         self.scroll.Freeze()
         self.grid_sizer.Clear(delete_windows=True)
@@ -251,6 +280,13 @@ class ButtonGridPanel(wx.Panel):
             ctrl.SetMinSize((100, 100))
             ctrl.SetMaxSize((100, 100))
             self._apply_enabled_visual_state(ctrl, is_available)
+            if is_available:
+                custom_color = self._iconless_custom_color(btn_cfg)
+                if custom_color is not None:
+                    normal_text = self._text_color_for_background(custom_color)
+                    ctrl.SetBackgroundColour(custom_color)
+                    ctrl.SetForegroundColour(normal_text)
+                    self._bind_hover_black_text(ctrl, normal_text)
 
             ctrl.Bind(wx.EVT_BUTTON, lambda _e, b=btn_cfg: self._on_button_click(b))
             ctrl.Bind(
