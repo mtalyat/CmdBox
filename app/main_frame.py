@@ -467,6 +467,19 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_SPLITTER_SASH_POS_CHANGED, self._on_sash_changed, self.splitter)
         self.Bind(wx.EVT_HOTKEY, self._on_global_hotkey)
         self.Bind(wx.EVT_TIMER, self._on_overlay_queue_tick, self._overlay_queue_timer)
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+
+    def _on_char_hook(self, evt: wx.KeyEvent) -> None:
+        if evt.ControlDown() and evt.ShiftDown():
+            unicode_key = evt.GetUnicodeKey()
+            key_code = evt.GetKeyCode()
+            if unicode_key == ord(">") or key_code == ord("."):
+                self._switch_project_profile_by_delta(1)
+                return
+            if unicode_key == ord("<") or key_code == ord(","):
+                self._switch_project_profile_by_delta(-1)
+                return
+        evt.Skip()
 
     def _parse_shortcut(self, shortcut: str) -> tuple[int, int] | None:
         raw = shortcut.strip()
@@ -791,6 +804,32 @@ class MainFrame(wx.Frame):
             return self._save_current_project()
         return True
 
+    def _mark_dirty_after_project_change(self, persisted: bool) -> None:
+        if self._project_path and persisted:
+            self._mark_dirty(False)
+            return
+        self._mark_dirty(True)
+
+    def _prepare_for_profile_switch(self) -> bool:
+        if self._project_path:
+            if not self._dirty:
+                return True
+            return self._save_current_project()
+
+        if not self._dirty:
+            return True
+
+        res = wx.MessageBox(
+            "This project has not been saved yet. Save before switching profiles?",
+            "Unsaved Project",
+            wx.YES_NO | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION,
+        )
+        if res == wx.CANCEL:
+            return False
+        if res == wx.YES:
+            return self._save_as_project_with_dialog()
+        return True
+
     def _new_default_config(self) -> AppConfig:
         default_path = default_project_file()
         if default_path.exists() and default_path.is_file():
@@ -854,16 +893,18 @@ class MainFrame(wx.Frame):
             out_path = self._ensure_project_extension(Path(dlg.GetPath()))
             return self._save_to_path(out_path)
 
-    def _save_config(self) -> None:
+    def _save_config(self) -> bool:
         self._snapshot_config_from_ui()
         if not self._project_path:
-            return
+            return False
 
         try:
             self._store.save_to(self._project_path, self._config)
+            return True
         except Exception as ex:
             self._append_log(LEVEL_ERROR, "CONFIG", EMPTY_SOURCE, f"autosave failed: {ex}")
             wx.MessageBox(f"Failed to auto-save project:\n{ex}", "Save Error", wx.OK | wx.ICON_ERROR)
+            return False
 
     def _append_log(self, level: str, source: str, run_id: str, message: str) -> None:
         entry = LogEntry(
@@ -1035,34 +1076,37 @@ class MainFrame(wx.Frame):
             if added_ids and profile.allowed_button_ids:
                 profile.allowed_button_ids.extend(sorted(added_ids))
         try:
-            self._save_config()
+            persisted = self._save_config()
             self._refresh_hotkeys()
         except Exception as ex:
             self._append_log(LEVEL_ERROR, "BUTTONS", EMPTY_SOURCE, f"button update failed: {ex}")
             wx.MessageBox(f"Failed to apply button changes:\n{ex}", "Button Update Error", wx.OK | wx.ICON_ERROR)
+            persisted = False
         finally:
-            self._mark_dirty(True)
+            self._mark_dirty_after_project_change(persisted)
 
     def _on_filters_changed(self, filters: list[FilterConfig]) -> None:
         self._config.filters = filters
         try:
-            self._save_config()
+            persisted = self._save_config()
         except Exception as ex:
             self._append_log(LEVEL_ERROR, "FILTERS", EMPTY_SOURCE, f"filter update failed: {ex}")
             wx.MessageBox(f"Failed to apply filter changes:\n{ex}", "Filter Update Error", wx.OK | wx.ICON_ERROR)
+            persisted = False
         finally:
-            self._mark_dirty(True)
+            self._mark_dirty_after_project_change(persisted)
 
     def _on_clear_log(self) -> None:
         self._log_service.clear()
         self.log_panel.clear_entries()
 
     def _on_sash_changed(self, _evt: wx.SplitterEvent) -> None:
+        persisted = False
         try:
-            self._save_config()
+            persisted = self._save_config()
         except Exception as ex:
             self._append_log(LEVEL_ERROR, "CONFIG", EMPTY_SOURCE, f"sash update failed: {ex}")
-        self._mark_dirty(True)
+        self._mark_dirty_after_project_change(persisted)
 
     def _on_new_project(self, _evt: wx.CommandEvent) -> None:
         if not self._can_discard_changes():
@@ -1147,7 +1191,8 @@ class MainFrame(wx.Frame):
         self._config.active_project_id = profile.id
         self._apply_config_to_ui()
         self._refresh_hotkeys()
-        self._mark_dirty(True)
+        persisted = self._save_config()
+        self._mark_dirty_after_project_change(persisted)
 
     def _on_edit_project_profile(self, _evt: wx.CommandEvent) -> None:
         current = self._current_project()
@@ -1161,7 +1206,8 @@ class MainFrame(wx.Frame):
                         break
                 self._apply_config_to_ui()
                 self._refresh_hotkeys()
-                self._mark_dirty(True)
+                persisted = self._save_config()
+                self._mark_dirty_after_project_change(persisted)
         dlg.Destroy()
 
     def _on_delete_project_profile(self, _evt: wx.CommandEvent) -> None:
@@ -1182,16 +1228,42 @@ class MainFrame(wx.Frame):
         self._config.active_project_id = self._config.projects[0].id
         self._apply_config_to_ui()
         self._refresh_hotkeys()
-        self._mark_dirty(True)
+        persisted = self._save_config()
+        self._mark_dirty_after_project_change(persisted)
 
     def _on_switch_project_profile(self, evt: wx.CommandEvent) -> None:
         profile_id = self._project_switch_items.get(evt.GetId())
         if not profile_id or profile_id == self._config.active_project_id:
             return
+        self._switch_project_profile_to(profile_id)
+
+    def _switch_project_profile_to(self, profile_id: str) -> None:
+        if profile_id == self._config.active_project_id:
+            return
+        if not self._prepare_for_profile_switch():
+            self._refresh_project_menu()
+            return
+
         self._config.active_project_id = profile_id
         self._apply_config_to_ui()
         self._refresh_hotkeys()
-        self._mark_dirty(True)
+        persisted = self._save_config()
+        self._mark_dirty_after_project_change(persisted)
+
+    def _switch_project_profile_by_delta(self, delta: int) -> None:
+        profiles = self._config.projects
+        if len(profiles) <= 1:
+            return
+
+        current_id = self._config.active_project_id
+        current_index = 0
+        for i, profile in enumerate(profiles):
+            if profile.id == current_id:
+                current_index = i
+                break
+
+        next_index = (current_index + delta) % len(profiles)
+        self._switch_project_profile_to(profiles[next_index].id)
 
     def _on_close(self, evt: wx.CloseEvent) -> None:
         if not self._is_exiting and evt.CanVeto():

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+- Profile switching with `Ctrl+<` and `Ctrl+>` while the CmdBox window is focused
+- Automatic save on project edits when the project is already saved (no unsaved `*` marker)
+- Save prompt before profile switching when editing an unsaved (untitled) project
+
 ## 1.1.0
 - Double-clicking a .cmdbox file now forwards to the running CmdBox instance instead of opening a second instance.
 - If there are unsaved changes when an external .cmdbox open request arrives, CmdBox prompts to save before replacing the loaded project.
