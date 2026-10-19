@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+- Add custom colors for all icons (replaces whites and grays with color/shades of color)
+- Everything now autosaves
+
 ## 1.1.1
 - Profile switching with `Ctrl+<` and `Ctrl+>` while the CmdBox window is focused
 - Automatic save on project edits when the project is already saved (no unsaved `*` marker)
