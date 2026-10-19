@@ -3,6 +3,7 @@
 ## 1.1.2
 - Add custom colors for all icons (replaces whites and grays with color/shades of color)
 - Everything now autosaves
+- Drag and drop to re-order the buttons.
 
 ## 1.1.1
 - Profile switching with `Ctrl+<` and `Ctrl+>` while the CmdBox window is focused
