@@ -87,8 +87,8 @@ class MainFrame(wx.Frame):
         startup_project = self._resolve_startup_project_path(project_path)
         store_path = startup_project or default_project_file()
         self._store = ConfigStore(store_path)
-        self._config = self._store.load_from(startup_project) if startup_project else AppConfig.from_dict({})
-        self._project_path: Optional[Path] = startup_project
+        self._config = self._store.load_from(startup_project) if startup_project else self._new_default_config()
+        self._project_path: Optional[Path] = startup_project.resolve() if startup_project else default_project_file().resolve()
         self._recent_projects: list[Path] = self._read_recent_projects()
         if startup_project:
             self._recent_projects = self._merge_recent_project(startup_project, self._recent_projects)
@@ -318,8 +318,6 @@ class MainFrame(wx.Frame):
         self._open_item = file_menu.Append(wx.ID_OPEN, "&Open...\tCtrl+O")
         file_menu.AppendSubMenu(self._open_recent_menu, "Open &Recent")
         file_menu.AppendSeparator()
-        self._save_item = file_menu.Append(wx.ID_SAVE, "&Save\tCtrl+S")
-        self._save_as_item = file_menu.Append(wx.ID_SAVEAS, "Save &As...")
         self._settings_item = file_menu.Append(wx.ID_PREFERENCES, "&Settings...")
         file_menu.AppendSeparator()
         self._exit_item = file_menu.Append(wx.ID_EXIT, "E&xit")
@@ -423,8 +421,6 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_ICONIZE, self._on_iconize)
         self.Bind(wx.EVT_MENU, self._on_new_project, self._new_item)
         self.Bind(wx.EVT_MENU, self._on_open_project, self._open_item)
-        self.Bind(wx.EVT_MENU, self._on_save_project, self._save_item)
-        self.Bind(wx.EVT_MENU, self._on_save_as_project, self._save_as_item)
         self.Bind(wx.EVT_MENU, self._on_open_settings, self._settings_item)
         self.Bind(wx.EVT_MENU, self._on_exit, self._exit_item)
         self.Bind(wx.EVT_MENU, self._on_new_project_profile, self._new_profile_item)
@@ -750,53 +746,33 @@ class MainFrame(wx.Frame):
         self.splitter.SetSashPosition(target)
         self._config.sash_position = target
 
-    def _ensure_project_extension(self, path_value: Path) -> Path:
-        if path_value.suffix.lower() == PROJECT_EXT:
-            return path_value
-        if path_value.suffix:
-            return path_value
-        return path_value.with_suffix(PROJECT_EXT)
+    def _autosave_target_path(self) -> Path:
+        if self._project_path:
+            return self._project_path.resolve()
+        return default_project_file().resolve()
 
     def _can_discard_changes(self) -> bool:
         if not self._dirty:
             return True
+        if self._save_config():
+            self._mark_dirty(False)
+            return True
 
         res = wx.MessageBox(
-            "You have unsaved project changes. Save before continuing?",
-            "Unsaved Changes",
-            wx.YES_NO | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION,
+            "Project changes could not be auto-saved. Continue and discard changes?",
+            "Auto-save Failed",
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
         )
-        if res == wx.CANCEL:
-            return False
-        if res == wx.YES:
-            return self._save_current_project()
-        return True
+        return res == wx.YES
 
     def _mark_dirty_after_project_change(self, persisted: bool) -> None:
-        if self._project_path and persisted:
+        if persisted:
             self._mark_dirty(False)
             return
         self._mark_dirty(True)
 
     def _prepare_for_profile_switch(self) -> bool:
-        if self._project_path:
-            if not self._dirty:
-                return True
-            return self._save_current_project()
-
-        if not self._dirty:
-            return True
-
-        res = wx.MessageBox(
-            "This project has not been saved yet. Save before switching profiles?",
-            "Unsaved Project",
-            wx.YES_NO | wx.CANCEL | wx.CANCEL_DEFAULT | wx.ICON_QUESTION,
-        )
-        if res == wx.CANCEL:
-            return False
-        if res == wx.YES:
-            return self._save_as_project_with_dialog()
-        return True
+        return self._can_discard_changes()
 
     def _new_default_config(self) -> AppConfig:
         default_path = default_project_file()
@@ -811,13 +787,13 @@ class MainFrame(wx.Frame):
         return AppConfig.from_dict({})
 
     def _set_project(self, path_value: Optional[Path], config: AppConfig) -> None:
-        self._project_path = path_value
+        target_path = path_value.resolve() if path_value else default_project_file().resolve()
+        self._project_path = target_path
         self._config = config
         self._apply_config_to_ui()
         self._log_service.clear()
         self.log_panel.clear_entries()
-        if path_value:
-            self._touch_recent_project(path_value)
+        self._touch_recent_project(target_path)
         self._refresh_hotkeys()
         self._mark_dirty(False)
 
@@ -830,44 +806,14 @@ class MainFrame(wx.Frame):
             wx.MessageBox(f"Failed to load project:\n{ex}", "Load Error", wx.OK | wx.ICON_ERROR)
             return False
 
-    def _save_to_path(self, path_value: Path) -> bool:
-        try:
-            target = path_value.resolve()
-            self._store.save_to(target, self._snapshot_config_from_ui())
-            self._project_path = target
-            self._touch_recent_project(target)
-            self._mark_dirty(False)
-            return True
-        except Exception as ex:
-            wx.MessageBox(f"Failed to save project:\n{ex}", "Save Error", wx.OK | wx.ICON_ERROR)
-            return False
-
-    def _save_current_project(self) -> bool:
-        if self._project_path:
-            return self._save_to_path(self._project_path)
-        return self._save_as_project_with_dialog()
-
-    def _save_as_project_with_dialog(self) -> bool:
-        default_name = self._project_label()
-        with wx.FileDialog(
-            self,
-            "Save CmdBox Project",
-            wildcard=PROJECT_WILDCARD,
-            defaultFile=default_name,
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
-        ) as dlg:
-            if dlg.ShowModal() != wx.ID_OK:
-                return False
-            out_path = self._ensure_project_extension(Path(dlg.GetPath()))
-            return self._save_to_path(out_path)
-
     def _save_config(self) -> bool:
         self._snapshot_config_from_ui()
-        if not self._project_path:
-            return False
 
         try:
-            self._store.save_to(self._project_path, self._config)
+            target = self._autosave_target_path()
+            self._store.save_to(target, self._config)
+            self._project_path = target
+            self._touch_recent_project(target)
             return True
         except Exception as ex:
             self._append_log(LEVEL_ERROR, "CONFIG", EMPTY_SOURCE, f"autosave failed: {ex}")
@@ -1110,12 +1056,6 @@ class MainFrame(wx.Frame):
             return
 
         self._load_project_from_path(project_path)
-
-    def _on_save_project(self, _evt: wx.CommandEvent) -> None:
-        self._save_current_project()
-
-    def _on_save_as_project(self, _evt: wx.CommandEvent) -> None:
-        self._save_as_project_with_dialog()
 
     def _on_open_settings(self, _evt: wx.CommandEvent) -> None:
         self._show_window()

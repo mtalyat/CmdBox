@@ -19,11 +19,10 @@ CmdBox is a wxPython desktop app for running shell commands from an editable gri
   - OR matching across enabled filters
   - Clear log button
 - Project file workflow with custom `.cmdbox` extension:
-  - New, Open, Save, Save As from the File menu
-  - Unsaved-change prompt on close/open/new
+  - New and Open from the File menu
+  - Automatic save for all project edits (manual save actions removed)
   - Profile switching with `Ctrl+<` and `Ctrl+>` while the CmdBox window is focused
-  - Automatic save on project edits when the project is already saved (no unsaved `*` marker)
-  - Save prompt before profile switching when editing an unsaved (untitled) project
+  - If auto-save fails, CmdBox warns before potentially discarding unsaved changes
   - Open a project file from command line argument
 
 ## Setup
@@ -39,7 +38,8 @@ python main.py
 ## Project Files
 
 - CmdBox project files use the `.cmdbox` extension.
-- Use the File menu to create/open/save CmdBox settings files.
+- Use the File menu to create/open CmdBox settings files.
+- CmdBox auto-saves all edits to the active project file.
 - If you launch CmdBox without a file argument, it reopens the most recently used project file (if it still exists).
 - You can launch directly into a project with:
 
