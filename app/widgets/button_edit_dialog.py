@@ -98,7 +98,8 @@ class ButtonEditDialog(wx.Dialog):
             panel,
             colour=wx.Colour(normalize_hex_color(custom_seed_color, "#FFFFFF")),
         )
-        self.icon_preview = wx.StaticBitmap(panel, bitmap=wx.Bitmap(32, 32))
+        self.icon_preview = wx.StaticBitmap(panel, bitmap=wx.NullBitmap)
+        self.icon_preview.SetMinSize((32, 32))
 
         self.label_txt.Bind(wx.EVT_TEXT_ENTER, self._on_ok)
         self.success_value_txt.Bind(wx.EVT_TEXT_ENTER, self._on_ok)
@@ -195,13 +196,13 @@ class ButtonEditDialog(wx.Dialog):
     def _refresh_icon_preview(self) -> None:
         preview_cfg = self._build_value(show_messages=False)
         if preview_cfg is None:
-            self.icon_preview.SetBitmap(wx.Bitmap(32, 32))
+            self.icon_preview.SetBitmap(wx.NullBitmap)
             return
         bitmap = resolve_button_bitmap(preview_cfg, size=(32, 32), art_client=wx.ART_OTHER)
         if bitmap and bitmap.IsOk():
             self.icon_preview.SetBitmap(bitmap)
         else:
-            self.icon_preview.SetBitmap(wx.Bitmap(32, 32))
+            self.icon_preview.SetBitmap(wx.NullBitmap)
 
     def _on_browse(self, _evt: wx.CommandEvent) -> None:
         with wx.FileDialog(

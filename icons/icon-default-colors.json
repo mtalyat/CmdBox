@@ -1,10 +1,10 @@
 {
-  "Blank Document": "#FF0000",
+  "Blank Document": "#FFFFFF",
   "Checkmark": "#0ce63a",
   "Circle": "#0ce63a",
-  "Clock": "#FF0000",
-  "CmdBox": "#FF0000",
-  "Console": "#FF0000",
+  "Clock": "#FFFFFF",
+  "CmdBox": "#FFFFFF",
+  "Console": "#FFFFFF",
   "Empty Folder": "#eec39a",
   "Error": "#FF0000",
   "Export": "#1a1a1a",
@@ -18,7 +18,7 @@
   "Lock": "#1a1a1a",
   "Magic Wand": "#fbf236",
   "Magnify": "#1a1a1a",
-  "Multiple Documents": "#FF0000",
+  "Multiple Documents": "#FFFFFF",
   "Play": "#1a1a1a",
   "Power": "#1a1a1a",
   "Repeat": "#1a1a1a",
@@ -30,5 +30,5 @@
   "Triangle": "#d77bba",
   "Unlock": "#1a1a1a",
   "Warning": "#d77bba",
-  "Written Document": "#FF0000"
+  "Written Document": "#FFFFFF"
 }
