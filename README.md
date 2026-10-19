@@ -5,6 +5,7 @@ CmdBox is a wxPython desktop app for running shell commands from an editable gri
 ## Features
 
 - Editable command button grid.
+- Drag-and-drop button reordering.
 - Right-click actions: add, edit, duplicate, delete.
 - Button editor supports:
   - Label text

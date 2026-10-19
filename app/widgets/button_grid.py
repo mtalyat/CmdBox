@@ -12,6 +12,20 @@ from app.widgets.button_edit_dialog import ButtonEditDialog
 
 ButtonsChangedHandler = Callable[[list[CommandButtonConfig]], None]
 ButtonRunHandler = Callable[[CommandButtonConfig], None]
+
+_REORDER_DRAG_PREFIX = "cmdbox-button:"
+
+
+class _ButtonReorderDropTarget(wx.TextDropTarget):
+    def __init__(self, panel: "ButtonGridPanel", target_button_id: str):
+        super().__init__()
+        self._panel = panel
+        self._target_button_id = target_button_id
+
+    def OnDropText(self, _x: int, _y: int, data: str) -> bool:
+        return self._panel._on_button_drop(data, self._target_button_id)
+
+
 class ButtonGridPanel(wx.Panel):
     def __init__(
         self,
@@ -25,6 +39,7 @@ class ButtonGridPanel(wx.Panel):
         self._on_buttons_changed = on_buttons_changed
         self._on_run_button = on_run_button
         self._allowed_button_ids: set[str] | None = None
+        self._drag_candidate_button_id: str | None = None
 
         root = wx.BoxSizer(wx.VERTICAL)
 
@@ -171,6 +186,58 @@ class ButtonGridPanel(wx.Panel):
                 return i
         return -1
 
+    def _start_button_drag(self, ctrl: wx.Window, button_id: str) -> None:
+        data = wx.TextDataObject(f"{_REORDER_DRAG_PREFIX}{button_id}")
+        drag_source = wx.DropSource(ctrl)
+        drag_source.SetData(data)
+        drag_source.DoDragDrop(flags=wx.Drag_DefaultMove)
+
+    def _on_button_left_down(self, evt: wx.MouseEvent, button_id: str) -> None:
+        self._drag_candidate_button_id = button_id
+        evt.Skip()
+
+    def _on_button_left_up(self, evt: wx.MouseEvent, button_id: str) -> None:
+        if self._drag_candidate_button_id == button_id:
+            self._drag_candidate_button_id = None
+        evt.Skip()
+
+    def _on_button_motion(self, evt: wx.MouseEvent, ctrl: wx.Window, button_id: str) -> None:
+        if (
+            self._drag_candidate_button_id == button_id
+            and evt.LeftIsDown()
+            and evt.Dragging()
+        ):
+            self._drag_candidate_button_id = None
+            self._start_button_drag(ctrl, button_id)
+            return
+        evt.Skip()
+
+    def _on_button_drop(self, payload: str, target_button_id: str) -> bool:
+        if not payload.startswith(_REORDER_DRAG_PREFIX):
+            return False
+        source_button_id = payload[len(_REORDER_DRAG_PREFIX):].strip()
+        if not source_button_id or source_button_id == target_button_id:
+            return False
+
+        source_index = self._find_index(source_button_id)
+        target_index = self._find_index(target_button_id)
+        if source_index < 0 or target_index < 0:
+            return False
+
+        wx.CallAfter(self._apply_button_reorder, source_button_id, target_button_id)
+        return True
+
+    def _apply_button_reorder(self, source_button_id: str, target_button_id: str) -> None:
+        source_index = self._find_index(source_button_id)
+        target_index = self._find_index(target_button_id)
+        if source_index < 0 or target_index < 0 or source_index == target_index:
+            return
+
+        moved = self._buttons.pop(source_index)
+        self._buttons.insert(target_index, moved)
+        self._rebuild_grid()
+        self._emit_changed()
+
     def _resolve_bitmap(self, btn_cfg: CommandButtonConfig, size: tuple[int, int] = (16, 16)) -> wx.Bitmap | None:
         return resolve_button_bitmap(btn_cfg, size=size, art_client=wx.ART_BUTTON)
 
@@ -289,10 +356,14 @@ class ButtonGridPanel(wx.Panel):
                     self._bind_hover_black_text(ctrl, normal_text)
 
             ctrl.Bind(wx.EVT_BUTTON, lambda _e, b=btn_cfg: self._on_button_click(b))
+            ctrl.Bind(wx.EVT_LEFT_DOWN, lambda evt, button_id=btn_cfg.id: self._on_button_left_down(evt, button_id))
+            ctrl.Bind(wx.EVT_LEFT_UP, lambda evt, button_id=btn_cfg.id: self._on_button_left_up(evt, button_id))
+            ctrl.Bind(wx.EVT_MOTION, lambda evt, c=ctrl, button_id=btn_cfg.id: self._on_button_motion(evt, c, button_id))
             ctrl.Bind(
                 wx.EVT_CONTEXT_MENU,
                 lambda evt, button_id=btn_cfg.id: self._on_button_context(evt, button_id),
             )
+            ctrl.SetDropTarget(_ButtonReorderDropTarget(self, btn_cfg.id))
             self.grid_sizer.Add(ctrl, 0, wx.RIGHT | wx.BOTTOM, 2)
 
         self.scroll.Layout()
